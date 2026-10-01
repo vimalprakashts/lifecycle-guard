@@ -1,0 +1,11 @@
+{
+  "name": "vimal-tools",
+  "owner": { "name": "Vimal Prakash" },
+  "plugins": [
+    {
+      "name": "lifecycle-guard",
+      "source": "./plugins/lifecycle-guard",
+      "description": "Forces full-lifecycle feature specs, blocks half-done work, and learns your style and missed items automatically."
+    }
+  ]
+}
