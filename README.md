@@ -158,7 +158,7 @@ Your learned knowledge in `~/.claude/lifecycle-guard/` is left in place — dele
 
 ## Contributing
 
-Issues and PRs welcome — especially new seed `domains/*.md` checklists for common feature areas (auth, notifications, search, billing, onboarding…). Keep rules general enough to prevent a miss on a *different* codebase.
+Issues and PRs welcome — especially new seed `domains/*.md` checklists for common feature areas (`payments`, `auth` and `notifications` ship already; `search`, `billing`, `onboarding`… wanted). Keep rules general enough to prevent a miss on a *different* codebase. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## License
 
