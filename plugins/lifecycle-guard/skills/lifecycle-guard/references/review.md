@@ -15,6 +15,10 @@ critic is READ-ONLY — it returns findings; you fix them.
 > - CTA / deep-link coverage — every metric/alert/tile/row that implies an action
 >   navigates to the EXACT pre-filtered actionable view, not a generic page.
 > - Action closure — the action completes in place, not just a redirect.
+> - Entity cross-links (ALL pages, not just dashboards) — every reference to another
+>   entity (order #, customer, product, invoice, SKU, vendor, user) in any table cell,
+>   list row, detail panel or modal links to that entity's own page. Plain-text entity
+>   reference = dead-end = FAIL.
 > - Interactivity — charts are interactive (hover + tooltip), not static images.
 > - State visibility + empty/loading/error states in every new UI.
 > - Failure/edges — idempotency, third-party down, partial failure, concurrency, abandonment.

@@ -46,9 +46,11 @@ Applies to every feature. Mark each item covered or N/A with a reason in the spe
 - [ ] Structured logs + alert on failure spikes
 
 ## Actionability
+"Call to action" is not a dashboard-only concept — it applies to EVERY page.
 - [ ] Every metric, alert, list row and notification has a clear call-to-action
 - [ ] Each CTA deep-links to the EXACT pre-filtered, actionable view (not a generic page); target page honours the filter param
 - [ ] The action completes the task in place (verify/approve/pay/edit), not just a redirect that leaves the user to hunt
+- [ ] **Entity cross-links everywhere**: any reference to another entity shown on ANY page — order #, customer, product, invoice, affiliate, SKU, vendor, user — rendered in a table cell, list row, detail panel or modal is a link to that entity's own page. A plain-text entity reference is a lifecycle dead-end. Enumerate every entity reference each screen renders and confirm each is navigable.
 - [ ] Charts/graphs are interactive (hover value + tooltip), not static images
 
 ## Delivery
