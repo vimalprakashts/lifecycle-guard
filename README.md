@@ -27,6 +27,7 @@ The checklists are not static — they grow from your own corrections and prompt
 | **`UserPromptSubmit` hook** | every prompt | Logs it (raw material for learning). A feature request → injects *"spec the full lifecycle first."* A correction (*"you missed the admin side"*) → tells Claude to fix it **and** record a reusable rule immediately. Never blocks your prompt. |
 | **`lifecycle-guard` skill** | feature work | Loads your checklists + style → writes `.lifecycle/<feature>/spec.md` (actors, state machine, failure & edge cases, cross-cutting) → `tasks.md` → asks for your approval → builds task by task. |
 | **`Stop` hook** | Claude tries to end its turn | **Blocks** while an active `tasks.md` still has open `- [ ]` items. Deferral has to be explicit: `- [~] item — reason`. |
+| **`lifecycle-reviewer` agent** | Verify phase | An independent critic in a fresh context reviews every build against the spec — actor coverage, **CTA/deep-link coverage**, interactivity, failure paths, security — and the main agent fixes its findings in a bounded (token-aware) loop before anything is called done. |
 | **`SessionEnd` hook** | session closes | If enough new corrections/prompts piled up, runs `/lifecycle-guard:learn` headless in the background to distill them into rules. |
 
 ---

@@ -1,6 +1,8 @@
 {
   "name": "lifecycle-guard",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Full-lifecycle definition-of-done for every feature, with a self-learning checklist and style memory.",
-  "author": { "name": "Vimal Prakash" }
+  "author": {
+    "name": "Vimal Prakash"
+  }
 }

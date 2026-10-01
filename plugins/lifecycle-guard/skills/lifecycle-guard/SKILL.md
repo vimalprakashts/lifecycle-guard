@@ -28,7 +28,7 @@ Create `.lifecycle/<feature-slug>/spec.md` in the project root:
 1. **Goal** — one paragraph.
 2. **Actors** — every role that touches it: end customer, admin/ops, super-admin/tenant owner, finance, support, system (cron, queues), external systems (gateway webhooks, third-party APIs).
 3. **Entity state machine** — every state and every transition, including who or what triggers each one and what happens on timeout. Use a mermaid `stateDiagram-v2`.
-4. **Per-actor capabilities** — for each actor: screens, APIs, actions, and what they see in each state.
+4. **Per-actor capabilities + CTAs** — for each actor: screens, APIs, actions, and what they see in each state. For every metric, alert, list and notification, name the **call-to-action and its exact destination** — a deep-link to the pre-filtered, actionable view (not a generic page), and the action that closes the task in place. If a target page lacks the needed filter param, adding it is part of this feature. Any chart/graph is interactive (hover value + tooltip), not a static image.
 5. **Failure and edge cases** — walk every item in the loaded checklists' failure sections against this feature.
 6. **Cross-cutting** — permissions, tenant isolation, audit log, notifications, reporting/export, observability, config, migrations, data retention.
 7. **Checklist coverage** — every item from `core.md` and the loaded domain files, each marked `✓ covered in §N`, or `N/A — <reason>`. Nothing silently skipped.
@@ -59,9 +59,13 @@ feature: <name>
 - [ ] ...
 ## Ops (migrations, config, logging, alerts, docs)
 - [ ] ...
+## Review
+- [ ] Independent reviewer pass (lifecycle-reviewer, fresh context) — findings fixed or deferred
 ```
 
-Every spec item maps to at least one task. Show the user a short summary (actor count, states, task count, notable N/A decisions) and ask for approval once. If the user already said to just proceed, skip the wait.
+Every spec item maps to at least one task. The **Review** section is mandatory —
+always include the reviewer-pass task; the Stop hook enforces that the §5 review
+actually happened before "done". Show the user a short summary (actor count, states, task count, notable N/A decisions) and ask for approval once. If the user already said to just proceed, skip the wait.
 
 On approval, change the header to `status: active`. From then on, a Stop hook will not let you finish while any `- [ ]` remains.
 
@@ -69,9 +73,35 @@ On approval, change the header to `status: active`. From then on, a Stop hook wi
 
 Work task by task. Tick a box only when the code exists and a test covers it. If an item truly can't be done now (needs credentials, a product decision, a later phase), mark it `- [~] <item> — <reason>` rather than leaving it open or pretending it's done.
 
-### 5. Verify
+### 5. Verify — enforced independent review loop
 
-Run the test suite and any linters. Re-read `spec.md` section by section against the code and list any gaps; fix them. If subagents are available, have a fresh one do this comparison instead, since a reviewer without your context is stricter. When everything is ticked or deferred, set `status: done` and give the user a short summary including any deferred items.
+Self-review is not enough; you miss the same things twice. A **separate reviewer in
+a fresh context MUST run** before anything is called done — this is mandatory, not
+"if available", and it is why §3 always adds a `Reviewer agent pass` task that the
+Stop hook won't let you leave open.
+
+1. Run the test suite and any linters first; fix failures.
+2. **Dispatch the critic.** Prefer the `lifecycle-reviewer` agent; if your harness
+   has no plugin agents, spawn a fresh general-purpose subagent using
+   `references/review.md`. Give it the `spec.md`/`tasks.md` paths and the changed
+   files — NOT the whole repo. It reviews read-only and returns `VERDICT` + ranked
+   findings covering actor coverage, **CTA/deep-link coverage**, action closure,
+   **interactivity**, failure/edge cases, security/tenancy, CRUD parity, and the
+   `## Learned` rules.
+3. **Fix** every critical/high finding (and cheap mediums). Each fix that reflects a
+   reusable lesson also follows "Learning in the moment".
+4. **Re-dispatch once** to confirm. Stop at `VERDICT: PASS` or after this 2nd round —
+   never loop endlessly. Remaining findings after round 2 are reported to the user as
+   known gaps, not silently dropped.
+5. **Token discipline**: at most 2 review rounds; scope each dispatch to the diff +
+   spec; pass paths/excerpts, not file dumps; the critic runs on a mid-tier model.
+6. Only when tests pass, the review is PASS (or gaps are explicitly deferred), and
+   every box is ticked or `- [~]`, set `status: done` and give the user a short
+   summary including deferred items and any known gaps.
+
+If browser/E2E tooling is available, the critic (or you) should also click the
+feature's primary CTAs to confirm each lands on the correct, pre-filtered actionable
+view — a CTA that opens a generic page is a FAIL.
 
 ## Learning in the moment
 

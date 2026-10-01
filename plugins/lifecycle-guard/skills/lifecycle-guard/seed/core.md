@@ -45,8 +45,15 @@ Applies to every feature. Mark each item covered or N/A with a reason in the spe
 - [ ] Metrics / dashboard numbers updated
 - [ ] Structured logs + alert on failure spikes
 
+## Actionability
+- [ ] Every metric, alert, list row and notification has a clear call-to-action
+- [ ] Each CTA deep-links to the EXACT pre-filtered, actionable view (not a generic page); target page honours the filter param
+- [ ] The action completes the task in place (verify/approve/pay/edit), not just a redirect that leaves the user to hunt
+- [ ] Charts/graphs are interactive (hover value + tooltip), not static images
+
 ## Delivery
 - [ ] Unit tests per state transition; integration test for the main flow
+- [ ] Independent reviewer pass (fresh context) before "done"
 - [ ] Feature flag or safe rollout path
 - [ ] API docs / README updated
 - [ ] Config and env vars documented
