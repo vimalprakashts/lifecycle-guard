@@ -95,9 +95,15 @@ Stop hook won't let you leave open.
    known gaps, not silently dropped.
 5. **Token discipline**: at most 2 review rounds; scope each dispatch to the diff +
    spec; pass paths/excerpts, not file dumps; the critic runs on a mid-tier model.
-6. Only when tests pass, the review is PASS (or gaps are explicitly deferred), and
-   every box is ticked or `- [~]`, set `status: done` and give the user a short
-   summary including deferred items and any known gaps.
+6. **Write the committed review artifact** `.lifecycle/<feature>/review.md` with the
+   verdict, findings addressed, and any deferred gaps (format in `/lifecycle-guard:review`).
+   The Stop hook requires this file to show `VERDICT: PASS` (or `review: deferred — <reason>`)
+   before a feature may be `status: done` — so the review cannot be silently skipped.
+7. **Definition of done** (paste the evidence, don't just claim it): run the build, the
+   test suite and the linter and paste their literal output. A failing suite fixes the
+   CODE, never the test. Only when build+tests+lint are green, the review is PASS (or
+   deferred), and every box is ticked or `- [~]`, set `status: done` and give the user a
+   short summary including deferred items and known gaps.
 
 If browser/E2E tooling is available, the critic (or you) should also click the
 feature's primary CTAs to confirm each lands on the correct, pre-filtered actionable

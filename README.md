@@ -104,6 +104,7 @@ Claude:  …implements task by task… (Stop hook holds the turn until every box
 
 | Command | What it does |
 |---|---|
+| `/lifecycle-guard:review` | Run the independent critic loop on a feature on-demand + write its `review.md` verdict |
 | `/lifecycle-guard:lg-status` | What's been learned, what's pending, any active feature's open-task count |
 | `/lifecycle-guard:learn` | Distill new prompts/corrections into rules now (also runs automatically) |
 | `/lifecycle-guard:bootstrap` | One-time scan of your whole Claude Code history to seed everything |
@@ -164,3 +165,11 @@ Issues and PRs welcome — especially new seed `domains/*.md` checklists for com
 ## License
 
 [MIT](./LICENSE) © Vimal Prakash
+
+## Auto-registered on install
+
+Installing the plugin registers everything automatically — the hooks (prompt nudge, Stop gate, session-end learner), the `lifecycle-guard` skill, the `lifecycle-reviewer` agent and all commands. No wiring. (After *updating* an installed copy, run `/reload-plugins`.) The review is enforced per feature: the Stop hook won't let a feature be `status: done` until a committed `.lifecycle/<feature>/review.md` shows `VERDICT: PASS` (or an explicit deferral).
+
+## AI-native SDLC alignment
+
+Each feature leaves committed artifacts — `spec.md` → `tasks.md` → `review.md` — an audit trail a reviewer (or the next session) can read. Definition of done = build + tests + lint green with the output pasted, and an independent reviewer PASS; failing tests fix the code, never the test.

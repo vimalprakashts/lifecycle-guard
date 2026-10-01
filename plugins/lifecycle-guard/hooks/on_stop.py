@@ -47,7 +47,35 @@ def main() -> None:
                       if (m := OPEN.match(line))]
         if open_items:
             blockers.append((f.relative_to(cwd), open_items))
+
+    # Even with every box ticked, a feature is NOT done until an independent review
+    # passed. Require a committed review artifact (.lifecycle/<feature>/review.md with
+    # "VERDICT: PASS", or an explicit "review: deferred" reason). This fires only at
+    # completion (no open boxes), so it never blocks mid-implementation turns.
     if not blockers:
+        review_missing = []
+        for f in active_task_files(cwd):
+            rev = f.parent / "review.md"
+            ok = False
+            try:
+                if rev.exists():
+                    t = rev.read_text(encoding="utf-8").lower()
+                    ok = "verdict: pass" in t or "review: deferred" in t
+            except Exception:
+                ok = False
+            if not ok:
+                review_missing.append(f.parent.name)
+        if review_missing:
+            reason = (
+                "[lifecycle-guard] All tasks are ticked but the mandatory independent review "
+                "hasn't passed for: " + ", ".join(review_missing) + ".\n"
+                "Run the reviewer now (the `lifecycle-reviewer` agent, or `/lifecycle-guard:review`): "
+                "it reviews actor coverage, CTA/deep-link coverage, interactivity, failure paths and "
+                "security in a fresh context. Fix its findings, then write the verdict to "
+                ".lifecycle/<feature>/review.md (VERDICT: PASS). Only then set status: done."
+            )
+            print(json.dumps({"decision": "block", "reason": reason}))
+            return
         return
 
     lines = []
