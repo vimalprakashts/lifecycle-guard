@@ -17,9 +17,18 @@ Treat `## Learned` items as mandatory: each one exists because it was missed bef
 
 ## Workflow
 
-### 1. Load context (silently)
+### 1. Load context + ORIENT (silently) — critical, do this FIRST
 
-Read `core.md` and `style.md`. List `domains/` and read every file relevant to the request (a "subscription renewal" feature needs `payments.md` and `notifications.md`, for example). If no domain file fits, create `domains/<domain>.md` from your own domain knowledge using the structure of the existing ones, mark its header `> seeded by Claude — unverified`, and continue. Also read the project's `CLAUDE.md` and skim the codebase for existing patterns.
+Read `core.md` and `style.md`. List `domains/` and read every file relevant to the request (a "subscription renewal" feature needs `payments.md` and `notifications.md`, for example). If no domain file fits, create `domains/<domain>.md` from your own domain knowledge using the structure of the existing ones, mark its header `> seeded by Claude — unverified`, and continue. Also read the project's `CLAUDE.md`.
+
+**Then ORIENT against what already exists — before writing the spec, never mind code.** You will add new things (a setting, a page, an endpoint); your job is to put them in the RIGHT existing home, not to build a parallel one. So inventory the current structure for the area you're touching:
+
+- **Routes / navigation / menus** — grep the router and any nav/tab/menu list. Know every existing page and section name.
+- **The natural home for your feature** — is there already a page, tab, settings section, modal, list, or report where this belongs? (e.g. a new AI toggle belongs on the existing AI settings page, not a brand-new tab.) Read that surface's code.
+- **Existing endpoints / services / DTOs / settings slices** — grep for ones that already do part of this, so you extend rather than duplicate.
+- When placement isn't obvious, **build a quick sitemap**: list the routes/tabs and one line on what each already holds, and pick the fit from that.
+
+**Adding a NEW top-level surface (nav item, route/path, settings tab, page, endpoint) when an existing one is the natural home is a red flag** — prefer extending the existing surface. This decision is made HERE, from reading, not after the fact. Record the chosen placement + what you reused in the spec (§6/§7), so the reviewer can check it.
 
 ### 2. Write the spec
 
@@ -31,6 +40,7 @@ Create `.lifecycle/<feature-slug>/spec.md` in the project root:
 4. **Per-actor capabilities + CTAs** — for each actor: screens, APIs, actions, and what they see in each state. For every metric, alert, list and notification, name the **call-to-action and its exact destination** — a deep-link to the pre-filtered, actionable view (not a generic page), and the action that closes the task in place. If a target page lacks the needed filter param, adding it is part of this feature. Any chart/graph is interactive (hover value + tooltip), not a static image. **"Call to action" is not dashboard-only — it applies to every page.** For each screen (list, table, detail, modal — not just dashboards), enumerate every reference it renders to another entity (order #, customer, product, invoice, affiliate, SKU, vendor, user) and make each a link to that entity's own page. A plain-text entity reference is a lifecycle dead-end.
 5. **Failure and edge cases** — walk every item in the loaded checklists' failure sections against this feature.
 6. **Cross-cutting** — permissions, tenant isolation, audit log, notifications, reporting/export, observability, config, migrations, data retention.
+   **Placement & reuse** (from the §1 orientation): name the existing page/route/tab/section/endpoint this feature EXTENDS, and the existing services/DTOs it reuses. If you are adding any NEW top-level surface (nav item, route, settings tab, page, endpoint), justify why no existing home fit — this is the anti-duplication record the reviewer checks.
 7. **Checklist coverage** — every item from `core.md` and the loaded domain files, each marked `✓ covered in §N`, or `N/A — <reason>`. Nothing silently skipped.
 8. **Acceptance criteria** — Given/When/Then, at least one per state transition and per actor.
 9. **Out of scope** — explicit.

@@ -53,6 +53,11 @@ Applies to every feature. Mark each item covered or N/A with a reason in the spe
 - [ ] **Entity cross-links everywhere**: any reference to another entity shown on ANY page — order #, customer, product, invoice, affiliate, SKU, vendor, user — rendered in a table cell, list row, detail panel or modal is a link to that entity's own page. A plain-text entity reference is a lifecycle dead-end. Enumerate every entity reference each screen renders and confirm each is navigable.
 - [ ] Charts/graphs are interactive (hover value + tooltip), not static images
 
+## Reuse & placement (orient before building)
+- [ ] Before adding ANY new surface (nav/menu item, route/path, settings tab, page, modal, endpoint, service), inventory what already exists (grep the router, nav/tab lists, endpoints/services) and EXTEND the natural existing home
+- [ ] A new top-level surface where an existing page/section/endpoint is the obvious home is a red flag — justify it or place it in the existing home
+- [ ] Spec records the chosen placement + what existing code was reused
+
 ## Delivery
 - [ ] Unit tests per state transition; integration test for the main flow
 - [ ] Independent reviewer pass (fresh context) before "done"
@@ -61,3 +66,4 @@ Applies to every feature. Mark each item covered or N/A with a reason in the spe
 - [ ] Config and env vars documented
 
 ## Learned
+- [ ] ORIENT BEFORE BUILDING: read the existing routes/nav/settings-tabs/endpoints for the area FIRST and extend the natural home; adding a parallel nav item / route / tab / page / endpoint when one exists is a red flag the reviewer must also catch (a diff-only read misses it — look at the surrounding structure) _(learned 2026-10-02: a feature added its own settings tab + route instead of joining the existing AI settings page)_

@@ -24,6 +24,9 @@ critic is READ-ONLY — it returns findings; you fix them.
 > - Failure/edges — idempotency, third-party down, partial failure, concurrency, abandonment.
 > - Security — per-action permission + tenant isolation + no IDOR + no secrets in logs.
 > - CRUD parity across create/edit/view/clone/convert.
+> - Placement / no duplicate surface — inventory existing routes/nav/settings-tabs/
+>   endpoints FIRST; the change must EXTEND the natural existing home, not add a parallel
+>   nav item / route / tab / page / endpoint. A new surface where one existed = FAIL.
 > - Every `## Learned` rule satisfied. Tests cover new transitions and are green.
 > Output ONLY:
 > VERDICT: PASS|FAIL

@@ -31,6 +31,7 @@ You review only — you never edit. You return findings; the main agent fixes th
 - **Failure & edges**: duplicate submit/idempotency, third-party/network failure, partial failure, concurrency, abandonment — handled or explicitly deferred.
 - **Security/tenancy**: permission checks per action + tenant isolation on every query; no IDOR; secrets not logged.
 - **CRUD parity**: a field/capability added to one screen is mirrored across create/edit/view/clone/convert.
+- **Placement / no duplicate surface**: FIRST inventory what already exists in the area touched — grep the router, the nav/menu, the settings-tab list, existing endpoints/services. Then check the change EXTENDED the natural existing home instead of creating a parallel one. Adding a NEW nav item, route/path, settings tab, page, modal, or endpoint when an existing surface was the obvious home is a FAIL — name the existing home it should have used. (This is exactly the kind of thing a diff-only read misses: you must look at the surrounding structure, not just the new files.)
 - **`## Learned` rules**: every mandatory learned rule in the loaded checklists is satisfied (each exists because it was missed before).
 - **Tests**: new state transitions and the main flow are covered; suite is green.
 
