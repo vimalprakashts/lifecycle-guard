@@ -58,6 +58,11 @@ Applies to every feature. Mark each item covered or N/A with a reason in the spe
 - [ ] A new top-level surface where an existing page/section/endpoint is the obvious home is a red flag — justify it or place it in the existing home
 - [ ] Spec records the chosen placement + what existing code was reused
 
+## Business rules & dependencies
+- [ ] Every new value / default / preset / limit / threshold is reconciled with the EXISTING business rules it touches (min/max order value, order/qty limits, pricing & discount tiers, tax, stock thresholds, delivery eligibility, coupons) — never picked in isolation
+- [ ] Each key value is justified: why this value, why here, what it depends on, what depends on it, is it grouped correctly
+- [ ] No value contradicts an existing rule (e.g. a budget/price option below the store's minimum order value)
+
 ## Delivery
 - [ ] Unit tests per state transition; integration test for the main flow
 - [ ] Independent reviewer pass (fresh context) before "done"
@@ -67,3 +72,4 @@ Applies to every feature. Mark each item covered or N/A with a reason in the spe
 
 ## Learned
 - [ ] ORIENT BEFORE BUILDING: read the existing routes/nav/settings-tabs/endpoints for the area FIRST and extend the natural home; adding a parallel nav item / route / tab / page / endpoint when one exists is a red flag the reviewer must also catch (a diff-only read misses it — look at the surrounding structure) _(learned 2026-10-02: a feature added its own settings tab + route instead of joining the existing AI settings page)_
+- [ ] RECONCILE VALUES WITH BUSINESS RULES: every new value/default/preset/limit/threshold must respect existing constraints (min/max order, limits, tax, pricing tiers, stock thresholds); justify each (why this value, why here, dependencies) — a value picked in isolation that contradicts a rule is a bug _(learned 2026-10-02: budget presets started at ₹500 while the store minimum order is ₹3000)_

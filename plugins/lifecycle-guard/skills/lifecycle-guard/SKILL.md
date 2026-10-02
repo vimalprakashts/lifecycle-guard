@@ -26,6 +26,7 @@ Read `core.md` and `style.md`. List `domains/` and read every file relevant to t
 - **Routes / navigation / menus** — grep the router and any nav/tab/menu list. Know every existing page and section name.
 - **The natural home for your feature** — is there already a page, tab, settings section, modal, list, or report where this belongs? (e.g. a new AI toggle belongs on the existing AI settings page, not a brand-new tab.) Read that surface's code.
 - **Existing endpoints / services / DTOs / settings slices** — grep for ones that already do part of this, so you extend rather than duplicate.
+- **Existing BUSINESS RULES & constraints the feature touches** — min/max order value, order/qty limits, pricing & discount tiers, tax, stock thresholds, delivery eligibility, coupon rules, currency/rounding. Any value you will introduce (a default, preset, limit, threshold, budget band) MUST be consistent with these — never pick a number in isolation. (E.g. a "budget" selector must not offer amounts below the store's minimum order value.)
 - When placement isn't obvious, **build a quick sitemap**: list the routes/tabs and one line on what each already holds, and pick the fit from that.
 
 **Adding a NEW top-level surface (nav item, route/path, settings tab, page, endpoint) when an existing one is the natural home is a red flag** — prefer extending the existing surface. This decision is made HERE, from reading, not after the fact. Record the chosen placement + what you reused in the spec (§6/§7), so the reviewer can check it.
@@ -41,6 +42,7 @@ Create `.lifecycle/<feature-slug>/spec.md` in the project root:
 5. **Failure and edge cases** — walk every item in the loaded checklists' failure sections against this feature.
 6. **Cross-cutting** — permissions, tenant isolation, audit log, notifications, reporting/export, observability, config, migrations, data retention.
    **Placement & reuse** (from the §1 orientation): name the existing page/route/tab/section/endpoint this feature EXTENDS, and the existing services/DTOs it reuses. If you are adding any NEW top-level surface (nav item, route, settings tab, page, endpoint), justify why no existing home fit — this is the anti-duplication record the reviewer checks.
+   **Business rules & dependencies**: for each KEY value, default, preset, limit or threshold the feature introduces, write one line — *why this value, what existing business rule it must respect, what it depends on, what depends on it, is it grouped correctly*. Reconcile every one against the constraints found in §1 (min/max order, limits, tax, pricing tiers, stock thresholds, delivery eligibility). A value that contradicts an existing rule is a bug, not a detail. This is the "think through the whole lifecycle, not just the happy path" record the reviewer checks.
 7. **Checklist coverage** — every item from `core.md` and the loaded domain files, each marked `✓ covered in §N`, or `N/A — <reason>`. Nothing silently skipped.
 8. **Acceptance criteria** — Given/When/Then, at least one per state transition and per actor.
 9. **Out of scope** — explicit.

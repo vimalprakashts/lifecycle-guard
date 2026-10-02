@@ -27,6 +27,10 @@ critic is READ-ONLY — it returns findings; you fix them.
 > - Placement / no duplicate surface — inventory existing routes/nav/settings-tabs/
 >   endpoints FIRST; the change must EXTEND the natural existing home, not add a parallel
 >   nav item / route / tab / page / endpoint. A new surface where one existed = FAIL.
+> - Business-logic consistency — every new value/default/preset/limit/threshold is
+>   consistent with existing business rules (min/max order, limits, tax, pricing tiers,
+>   stock thresholds). A value that contradicts a rule (e.g. a budget below the store's
+>   minimum order value) = FAIL. Each key value justified, not picked in isolation.
 > - Every `## Learned` rule satisfied. Tests cover new transitions and are green.
 > Output ONLY:
 > VERDICT: PASS|FAIL
