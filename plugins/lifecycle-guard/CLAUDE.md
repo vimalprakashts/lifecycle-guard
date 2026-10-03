@@ -175,6 +175,9 @@ Defaults live in `lg_common.DEFAULT_CONFIG`; `config.json` overrides them.
 - **Bump `version` in `.claude-plugin/plugin.json`** on a meaningful change (history: 1.2.0
   entity-coverage → 1.3.0 entity cross-links on every page → 1.4.0 orient-before-building /
   no-duplicate-surface → 1.5.0 business-logic reconciliation → 1.6.0 rule provenance, scoping + /audit → 1.6.1 learn only from the user's own words).
+- **Releases are automatic:** a version bump merged to `main` triggers `.github/workflows/release.yml`
+  (tests → `v<version>` release, notes = bump commit body + commits since last tag). CI
+  (`.github/workflows/test.yml`) runs the tests on every push/PR on Python 3.9 and 3.13.
 - **Run the tests** before committing: `for t in plugins/lifecycle-guard/tests/test_*.py; do python3 $t; done`.
   `digest.py` honours `LG_DATA_DIR` too, so tests never touch the real KB.
 - **Hooks must stay fast and fail-safe** — each wraps `main()` in try/except and prints nothing

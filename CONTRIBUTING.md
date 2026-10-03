@@ -34,6 +34,14 @@ hooks, skill and docs are just as welcome.
 - A hook must **never** break the session — keep the top-level `try/except … pass` in each hook intact.
 - Run the tests: `for t in plugins/lifecycle-guard/tests/test_*.py; do python3 $t; done` (stdlib only; uses a temp `LG_DATA_DIR`, never your real knowledge base).
 
+## Releasing
+
+Bump `version` in `plugins/lifecycle-guard/.claude-plugin/plugin.json` in the same commit as the change,
+and put the user-facing summary in that commit's message body. When it lands on `main`, the `release`
+workflow runs the tests and publishes GitHub release `v<version>` with that body plus the commit list
+since the previous tag. Don't create tags or releases by hand. To preview the notes, run the workflow
+manually (Actions → release → Run workflow; `dry_run` is on by default).
+
 ## Pull requests
 
 Keep PRs focused (one domain file, or one behaviour change). Describe what miss or

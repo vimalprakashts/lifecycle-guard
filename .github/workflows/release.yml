@@ -1,0 +1,70 @@
+name: release
+
+# Bumping "version" in plugins/lifecycle-guard/.claude-plugin/plugin.json on main publishes
+# GitHub release v<version>, after the tests pass. Idempotent: an existing tag is skipped.
+on:
+  push:
+    branches: [main]
+    paths:
+      - plugins/lifecycle-guard/.claude-plugin/plugin.json
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only print the release notes; don't publish"
+        type: boolean
+        default: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history + tags for the notes
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Run tests
+        run: |
+          set -e
+          for t in plugins/lifecycle-guard/tests/test_*.py; do python "$t"; done
+
+      - name: Read version
+        id: version
+        run: |
+          v=$(python -c "import json; print(json.load(open('plugins/lifecycle-guard/.claude-plugin/plugin.json'))['version'])")
+          echo "tag=v$v" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag v$v already exists, nothing to release."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build notes
+        id: notes
+        run: |
+          bash .github/release-notes.sh "${{ steps.version.outputs.tag }}" > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      - name: Publish release
+        if: steps.version.outputs.exists == 'false' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --target "${{ github.sha }}" \
+            --title "${{ steps.version.outputs.tag }} — lifecycle-guard" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --latest
