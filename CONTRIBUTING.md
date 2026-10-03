@@ -25,13 +25,14 @@ hooks, skill and docs are just as welcome.
 
 - One idea per checkbox; prefer the failure it prevents ("Webhook may arrive before the browser redirect — both paths converge") over a vague noun ("webhooks").
 - No secrets, credentials, customer names, or PII anywhere.
-- Learned-rule format (when documenting one that came from a real miss): `- [ ] <rule> _(learned YYYY-MM-DD: <cause in under 10 words>)_`.
+- Learned-rule format (when documenting one that came from a real miss): `- [ ] <rule> _(learned YYYY-MM-DD @ <project>: <cause in under 10 words>)_`. Add `[scope: <project>]` after the checkbox only if it can't be generalized; seed files should contain none.
 
 ## Dev / testing
 
 - Hooks are plain Python 3, no third-party packages — keep it that way so it runs anywhere `python3` does.
 - Test locally: `/plugin marketplace add ~/path/to/your/clone` → `/plugin install lifecycle-guard@vimal-tools` → `/reload-plugins`, then try a feature prompt and a correction and watch `~/.claude/lifecycle-guard/`.
 - A hook must **never** break the session — keep the top-level `try/except … pass` in each hook intact.
+- Run the tests: `python3 plugins/lifecycle-guard/tests/test_provenance.py` (stdlib only; uses a temp `LG_DATA_DIR`, never your real knowledge base).
 
 ## Pull requests
 

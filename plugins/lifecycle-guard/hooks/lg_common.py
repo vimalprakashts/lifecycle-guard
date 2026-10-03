@@ -29,6 +29,7 @@ DEFAULT_CONFIG = {
     "auto_learn_min_prompts": 40,
     "stop_gate": True,             # block "done" while tasks.md has open boxes
     "feature_nudge": True,         # inject lifecycle reminder on feature-like prompts
+    "review_after_days": 90,       # /audit flags learned rules older than this as stale
     "last_learn_ts": 0,
 }
 
@@ -58,6 +59,12 @@ def ensure_data_dir() -> None:
         (DATA / "changelog.md").write_text("# lifecycle-guard changelog\n\n")
     if not (DATA / "config.json").exists():
         save_config(DEFAULT_CONFIG)
+
+
+def project_of(cwd: str) -> str:
+    """Origin label for a learned rule: the project directory's basename (never a full path)."""
+    name = Path(cwd).name if cwd else ""
+    return name or "?"
 
 
 def load_config() -> dict:

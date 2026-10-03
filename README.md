@@ -106,6 +106,7 @@ Claude:  …implements task by task… (Stop hook holds the turn until every box
 |---|---|
 | `/lifecycle-guard:review` | Run the independent critic loop on a feature on-demand + write its `review.md` verdict |
 | `/lifecycle-guard:lg-status` | What's been learned, what's pending, any active feature's open-task count |
+| `/lifecycle-guard:audit` | Review learned rules: keep, scope to a project, reword or drop the stale / origin-unknown / project-specific ones |
 | `/lifecycle-guard:learn` | Distill new prompts/corrections into rules now (also runs automatically) |
 | `/lifecycle-guard:bootstrap` | One-time scan of your whole Claude Code history to seed everything |
 
@@ -123,6 +124,14 @@ Everything learned lives **outside the plugin**, in `~/.claude/lifecycle-guard/`
 
 These are plain Markdown — **edit them freely**. Treat `## Learned` items as mandatory: each exists because something was missed before.
 
+Every learned rule carries its provenance, so it can be questioned later:
+
+```
+- [ ] [scope: shop-api] <rule> _(learned 2026-10-03 @ shop-api: <why>)_ _(reviewed 2027-01-05)_
+```
+
+`@ shop-api` is the project it was learned in; `[scope: …]` (optional) limits it to that project so a lesson born in one codebase isn't applied everywhere; `_(reviewed …)_` records the last time you confirmed it. `/lifecycle-guard:audit` lists rules that are stale, have no recorded origin, or look project-specific but are global, and walks you through keep / scope / reword / drop — every decision is backed up and logged to `changelog.md`.
+
 > **Tip:** put `~/.claude/lifecycle-guard` in a private git repo to version your knowledge base and share domain checklists with your team.
 
 ---
@@ -138,6 +147,7 @@ Edit `~/.claude/lifecycle-guard/config.json`:
 | `auto_learn_min_prompts` | `40` | …or min new prompts to trigger it |
 | `stop_gate` | `true` | Block "done" while an active `tasks.md` has open boxes |
 | `feature_nudge` | `true` | Inject the lifecycle reminder on feature-like prompts |
+| `review_after_days` | `90` | `/lifecycle-guard:audit` flags rules not learned or reviewed within this many days |
 
 ---
 

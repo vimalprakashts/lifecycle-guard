@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, __import__("os").path.dirname(__file__))
 from lg_common import (DATA, append_jsonl, ensure_data_dir, headless,  # noqa: E402
-                       load_config, read_hook_input)
+                       load_config, project_of, read_hook_input)
 
 CORRECTION = re.compile(
     r"\b("
@@ -64,12 +64,15 @@ def main() -> None:
     notes = []
     if CORRECTION.search(prompt):
         append_jsonl("corrections.jsonl", rec)
+        project = project_of(rec["cwd"])
         notes.append(
             "[lifecycle-guard] This message looks like a correction of missed scope or a repeated mistake. "
             "After fixing it: (1) add the missing item to the active .lifecycle/<feature>/tasks.md; "
             f"(2) generalise it into a reusable rule and append it under '## Learned' in the matching file in "
             f"{DATA}/domains/ (create the domain file if none fits) or {DATA}/core.md if it applies to every "
-            "feature; format: '- [ ] <rule> _(learned YYYY-MM-DD: <one-line cause>)_'. Skip duplicates. "
+            f"feature; format: '- [ ] <rule> _(learned YYYY-MM-DD @ {project}: <one-line cause>)_'. "
+            f"If the rule only makes sense in this project (names its tenants, hosts, paths, entities), "
+            f"prefix it with '[scope: {project}]' so it is not applied elsewhere. Skip duplicates. "
             "If it is a style/convention correction rather than missed scope, append it to "
             f"{DATA}/style.md instead. Do this silently in one edit; mention it in one short line at the end."
         )

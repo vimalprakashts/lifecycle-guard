@@ -49,6 +49,7 @@ true-independence floor; the critic is the last mile for what tests can't encode
 .claude-plugin/plugin.json        name/version/description/author (version lives here)
 agents/lifecycle-reviewer.md      the critic subagent (model: sonnet, read-only)
 commands/
+  audit.md                        /lifecycle-guard:audit [all] — review rules: keep/scope/reword/drop
   bootstrap.md                    /lifecycle-guard:bootstrap — seed KB from ALL past sessions
   learn.md                        /lifecycle-guard:learn [auto] — distill recent prompts/corrections
   lg-status.md                    /lifecycle-guard:lg-status — show learned rules + pending tasks
@@ -59,13 +60,14 @@ hooks/
   on_prompt.py                    UserPromptSubmit: log prompt, detect correction/feature, nudge
   on_stop.py                      Stop: the definition-of-done gate (see above)
   on_session_end.py               SessionEnd: auto-run /learn in the background when enough piled up
-scripts/digest.py                 prepares raw material for /learn (also --bootstrap/--mark/--stats)
+scripts/digest.py                 prepares raw material for /learn (also --bootstrap/--mark/--stats/--audit)
 skills/lifecycle-guard/
   SKILL.md                        the full-lifecycle workflow the agent follows
   references/review.md            review rubric the critic/`/review` uses
   seed/core.md                    universal checklist — SEED copied to the KB on first run
   seed/style.md                   style/conventions seed
   seed/domains/{auth,notifications,payments}.md  domain checklists seed
+tests/test_provenance.py          stdlib unittest: hook origin + audit flags (temp LG_DATA_DIR)
 ```
 
 ### Important: learned data lives OUTSIDE the plugin
@@ -90,7 +92,13 @@ on every run so updates propagate.
 
 `core.md`, `style.md`, and `domains/*.md` each carry a `## Learned` section; items there
 are mandatory — each exists because something was missed before, formatted
-`- [ ] <rule> _(learned YYYY-MM-DD: <cause>)_`.
+`- [ ] [scope: <project>] <rule> _(learned YYYY-MM-DD @ <project>: <cause>)_ _(reviewed YYYY-MM-DD)_`.
+`@ <project>` = origin (cwd basename, via `lg_common.project_of`); `[scope: …]` (optional) = only
+applies in that project (skill + reviewer honour it); `_(reviewed …)_` (optional) = last audit keep.
+Legacy rules without `@ project` still parse — `digest.py --audit` flags them `no-origin`. The
+audit also flags `stale` (older than `review_after_days`, default 90) and `looks-project-specific`
+(unscoped but names a project from `prompts.jsonl` or a hostname). `/lifecycle-guard:audit` turns
+the report into keep / scope / reword / drop decisions (user-confirmed, backed up, changelogged).
 
 ---
 
@@ -165,7 +173,9 @@ Defaults live in `lg_common.DEFAULT_CONFIG`; `config.json` overrides them.
   the plugin; only `skills/lifecycle-guard/seed/` ships and seeds it.
 - **Bump `version` in `.claude-plugin/plugin.json`** on a meaningful change (history: 1.2.0
   entity-coverage → 1.3.0 entity cross-links on every page → 1.4.0 orient-before-building /
-  no-duplicate-surface → 1.5.0 business-logic reconciliation).
+  no-duplicate-surface → 1.5.0 business-logic reconciliation → 1.6.0 rule provenance, scoping + /audit).
+- **Run the tests** before committing: `python3 plugins/lifecycle-guard/tests/test_provenance.py`.
+  `digest.py` honours `LG_DATA_DIR` too, so tests never touch the real KB.
 - **Hooks must stay fast and fail-safe** — each wraps `main()` in try/except and prints nothing
   on error (a crashing hook must never break the user's turn). Keep them dependency-free (stdlib
   only) and under the configured timeouts (10–15s).
@@ -180,5 +190,8 @@ Defaults live in `lg_common.DEFAULT_CONFIG`; `config.json` overrides them.
   A feature with all boxes ticked but no `review.md` PASS **still blocks** — that's intentional.
 - Deferring is first-class: `- [~] item — reason` satisfies the gate. Don't fake `- [x]`.
 - The critic is read-only by design. If it could edit, it would stop being an independent check.
+- Project identity is the cwd **basename** — two repos with the same folder name share an origin
+  label, and a session started in a subfolder (`src`) is labelled `src`. Good enough for review;
+  don't build security decisions on it.
 - Everything the hooks log is the user's own prompt text — treat the KB as sensitive (it may
   contain project details); it stays local under `~/.claude/`.

@@ -6,15 +6,19 @@
                          into chunk files under ~/.claude/lifecycle-guard/bootstrap/
   digest.py --mark     record that learning finished now
   digest.py --stats    counts only
+  digest.py --audit [--json]
+                       review learned rules: date, origin project, scope, age, and flags
+                       (no-origin / stale / looks-project-specific) for /lifecycle-guard:audit
 """
 import json
+import os
 import re
 import sys
 import time
 from collections import Counter
 from pathlib import Path
 
-DATA = Path.home() / ".claude" / "lifecycle-guard"
+DATA = Path(os.environ.get("LG_DATA_DIR", Path.home() / ".claude" / "lifecycle-guard"))
 PROJECTS = Path.home() / ".claude" / "projects"
 CHUNK_CHARS = 45000
 
@@ -87,7 +91,7 @@ def user_texts(path):
         for t in texts:
             t = t.strip()
             if t and not t.startswith(NOISE) and not t.startswith("/"):
-                yield r.get("timestamp", ""), t
+                yield r.get("timestamp", ""), r.get("cwd", ""), t
 
 
 def bootstrap():
@@ -96,9 +100,11 @@ def bootstrap():
         return
     rows = []
     for f in PROJECTS.glob("*/*.jsonl"):
-        proj = f.parent.name.split("-")[-1] or f.parent.name
-        for ts, t in user_texts(f):
-            rows.append((ts, proj, t))
+        # same origin label the prompt hook uses (cwd basename), so rules learned in the
+        # moment and from bootstrap name their project identically
+        fallback = f.parent.name.split("-")[-1] or f.parent.name
+        for ts, cwd, t in user_texts(f):
+            rows.append((ts, project_name(cwd) if cwd else fallback, t))
     rows.sort()
     seen, uniq = set(), []
     for ts, proj, t in rows:
@@ -156,6 +162,130 @@ def stats():
     }, indent=2))
 
 
+# --- rule audit -------------------------------------------------------------
+# Rule line:  - [ ] [scope: proj] <rule> _(learned YYYY-MM-DD @ proj: cause)_ _(reviewed YYYY-MM-DD)_
+# Legacy lines without "@ proj" still parse (flag no-origin); unstamped bullets under "## Learned" and
+# stamps the regex can't read are kept and flagged too — the audit never silently drops a rule.
+# Seed checklist items (outside "## Learned") are the plugin's baseline, not learned rules.
+LEARNED = re.compile(r"_\(learned\s+(\d{4}-\d{2}-\d{2})(?:\s*@\s*(.+?))?\s*(?::\s*(.*?))?\)_", re.S)
+REVIEWED = re.compile(r"_\(reviewed\s+(\d{4}-\d{2}-\d{2})[^)]*\)_")
+SCOPE = re.compile(r"\[scope:\s*([^\]]+)\]", re.I)
+HOSTNAME = re.compile(r"\b(?:[\w-]+\.)*[a-z][\w-]*\.(?:com|in|io|dev|app|net|org|city|co|ai|cloud)\b", re.I)
+PLACEHOLDER_HOSTS = re.compile(r"(^|\.)(example|localhost|foo|bar|test|domain|yourdomain|mysite)\.", re.I)
+# basenames too generic to mean "this rule is about that project"
+GENERIC_NAMES = {"test", "tests", "code", "rule", "rules", "app", "apps", "src", "docs", "config", "node",
+                 "project", "projects", "tmp", "temp", "repo", "work", "server", "client", "frontend",
+                 "backend", "admin", "home", "desktop", "documents", "downloads", "scratch", "demo"}
+
+
+def kb_files():
+    files = [DATA / "core.md", DATA / "style.md"] + sorted((DATA / "domains").glob("*.md"))
+    return [f for f in files if f.exists()]
+
+
+def known_projects():
+    """Project names seen in prompt history — a rule naming one is probably project-specific."""
+    seen = Counter(project_name(r.get("cwd")) for r in read_jsonl(DATA / "prompts.jsonl"))
+    return {n for n, k in seen.items()
+            if k >= 2 and len(n) >= 4 and n != "?" and n.lower() not in GENERIC_NAMES}
+
+
+def days_since(date_str, now):
+    if not date_str:
+        return None
+    try:
+        return int((now - time.mktime(time.strptime(date_str, "%Y-%m-%d"))) // 86400)
+    except Exception:
+        return None
+
+
+def parse_rules():
+    rules = []
+    for f in kb_files():
+        in_learned = False
+        for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if line.startswith("#"):
+                in_learned = line.lstrip("#").strip().lower().startswith("learned")
+                continue
+            if not line.lstrip().startswith(("-", "*")):
+                continue
+            m = LEARNED.search(line)
+            stamped = "_(learned" in line
+            if not (m or stamped or in_learned):
+                continue
+            scope = SCOPE.search(line)
+            reviewed = REVIEWED.findall(line)
+            text = LEARNED.sub("", REVIEWED.sub("", SCOPE.sub("", line)))
+            text = re.sub(r"_\(learned\b[^)]*\)_", "", text)  # unreadable stamp, kept out of the text
+            text = re.sub(r"^\s*[-*]\s*(\[[ x~]\]\s*)?", "", text)
+            text = re.sub(r"\s+", " ", text).strip()
+            rules.append({
+                "file": str(f.relative_to(DATA)), "line": n, "rule": text,
+                "learned": m.group(1) if m else None,
+                "origin": ((m.group(2) or "").strip() or None) if m else None,
+                "cause": (m.group(3) or "").strip() if m else "",
+                "scope": scope.group(1).strip() if scope else None,
+                "reviewed": max(reviewed) if reviewed else None,
+                "malformed": stamped and not m,
+            })
+    return rules
+
+
+def audit_rules():
+    c = cfg()
+    limit = int(c.get("review_after_days", 90))
+    now = time.time()
+    projects = known_projects()
+    rules = parse_rules()
+    for r in rules:
+        flags = ["malformed"] if r["malformed"] else []
+        if not r["origin"]:
+            flags.append("no-origin")
+        age = days_since(r["reviewed"] or r["learned"], now)
+        r["age_days"] = age
+        if age is not None and age > limit:
+            flags.append("stale")
+        if not r["scope"]:
+            body = f"{r['rule']} {r['cause']}"
+            hits = sorted(p for p in projects if re.search(rf"\b{re.escape(p)}\b", body, re.I))
+            hits += sorted({m.group(0).lower() for m in HOSTNAME.finditer(body)
+                            if not PLACEHOLDER_HOSTS.search(m.group(0))})
+            if hits:
+                flags.append("looks-project-specific")
+                r["mentions"] = hits
+        r["flags"] = flags
+    return rules, limit
+
+
+def audit():
+    rules, limit = audit_rules()
+    if "--json" in sys.argv:
+        print(json.dumps({"review_after_days": limit, "rules": rules}, indent=2, ensure_ascii=False))
+        return
+    if not rules:
+        print("No learned rules found in the knowledge base.")
+        return
+    flagged = [r for r in rules if r["flags"]]
+    counts = Counter(fl for r in rules for fl in r["flags"])
+    scoped = sum(1 for r in rules if r["scope"])
+    print(f"# Rule audit — {len(rules)} learned rules, {len(flagged)} need review "
+          f"(stale after {limit} days)\n")
+    print(f"no-origin: {counts['no-origin']} · stale: {counts['stale']} · "
+          f"looks-project-specific: {counts['looks-project-specific']} · scoped: {scoped}\n")
+    for r in flagged:
+        where = f"@ {r['origin']}" if r["origin"] else "@ ?"
+        scope = f" [scope: {r['scope']}]" if r["scope"] else ""
+        rev = f", reviewed {r['reviewed']}" if r["reviewed"] else ""
+        print(f"- `{r['file']}:{r['line']}` learned {r['learned'] or '?'} {where}{scope}{rev} "
+              f"({'age unknown' if r['age_days'] is None else str(r['age_days']) + 'd'}) — **{', '.join(r['flags'])}**")
+        if r.get("mentions"):
+            print(f"  mentions: {', '.join(r['mentions'])}")
+        print(f"  rule: {r['rule'][:220]}")
+        if r["cause"]:
+            print(f"  cause: {r['cause'][:160]}")
+
+
 if __name__ == "__main__":
     arg = sys.argv[1] if len(sys.argv) > 1 else ""
-    {"--bootstrap": bootstrap, "--mark": mark, "--stats": stats}.get(arg, since_last)()
+    {"--bootstrap": bootstrap, "--mark": mark, "--stats": stats,
+     "--audit": audit}.get(arg, since_last)()
