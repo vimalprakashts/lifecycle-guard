@@ -17,7 +17,7 @@ You review only — you never edit. You return findings; the main agent fixes th
 - The project `CLAUDE.md` and the checklists in `~/.claude/lifecycle-guard/` (`core.md`, `style.md`, `domains/*.md`).
 
 ## How to review
-1. Read the spec, the tasks, and every changed file. Run the test suite and linters if present (`Bash`), and report failures as findings.
+1. Run `python3 ~/.claude/lifecycle-guard/bin/digest.py --rules` to list the learned rules with their ids (you'll cite them in the output). Read the spec, the tasks, and every changed file. Run the test suite and linters if present (`Bash`), and report failures as findings.
 2. Walk the spec section by section against the code. For EACH actor and EACH state transition, confirm the code path exists AND is reachable from that actor's UI/API.
 3. Check every item below. For each gap, emit a finding.
 
@@ -45,7 +45,15 @@ FINDINGS (most severe first):
 1. [critical|high|medium] <file:line or area> — <what's wrong> → <concrete fix>
 2. ...
 (if none) No findings — definition of done met.
+RULES APPLIED (learned rules relevant to this feature; omit irrelevant ones; one per line, exactly
+`- <id> caught — <gap>` or `- <id> satisfied`, the 8-char id copied verbatim from --rules, no bold):
+- <id> caught — <the gap this rule exposed>
+- <id> satisfied
 ```
+
+A rule is `caught` when it exposed a real gap in this feature (it is also a finding), `satisfied`
+when it applied and the feature already met it. This is how the user learns which rules earn their
+place, so only list rules you actually checked.
 
 Be specific and concrete (name the file, the actor, the exact gap and fix). Prefer
 a few true, high-signal findings over a long speculative list. If you cannot verify

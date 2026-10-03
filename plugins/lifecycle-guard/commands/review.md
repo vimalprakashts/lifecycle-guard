@@ -22,7 +22,11 @@ Run the mandatory independent review for a feature and record the result. Target
    - [severity] <file> — <what> → <fix applied>
    ## Known gaps (deferred)
    - <item> — <reason>
+   ## Rules applied
+   - <id> caught — <gap it exposed>
+   - <id> satisfied
    ```
+   Copy the critic's RULES APPLIED list (merge both rounds: a rule that caught something in round 1 stays `caught`). The Stop hook records it in `~/.claude/lifecycle-guard/usage.jsonl`, which is how `/lifecycle-guard:audit` knows which rules earn their place.
    If the user intentionally defers the whole review, write `review: deferred — <reason>` instead. The Stop hook requires this artifact (PASS or deferred) before a feature can be `status: done`.
 
 6. Run the test suite + lint and **paste the literal output**; a failing suite means the review is not PASS. Reply with a one-line summary (verdict, rounds, # findings fixed, any deferred).

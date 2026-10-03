@@ -132,6 +132,8 @@ Every learned rule carries its provenance, so it can be questioned later:
 
 `@ shop-api` is the project it was learned in; `[scope: …]` (optional) limits it to that project so a lesson born in one codebase isn't applied everywhere; `_(reviewed …)_` records the last time you confirmed it. `/lifecycle-guard:audit` lists rules that are stale, have no recorded origin, or look project-specific but are global, and walks you through keep / scope / reword / drop — every decision is backed up and logged to `changelog.md`.
 
+Rules also earn their place with evidence. Every independent review lists the learned rules it applied in `review.md` (`- <rule-id> caught — <gap>` or `- <rule-id> satisfied`), and the Stop hook records them in `usage.jsonl`. The audit then shows each rule as `applied N× (caught M)` or `never applied`: rules that keep getting applied stay fresh, and rules nobody has used in `review_after_days` come up for review.
+
 > **Tip:** put `~/.claude/lifecycle-guard` in a private git repo to version your knowledge base and share domain checklists with your team.
 
 ---

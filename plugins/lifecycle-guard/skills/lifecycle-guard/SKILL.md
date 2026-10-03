@@ -109,6 +109,8 @@ Stop hook won't let you leave open.
    spec; pass paths/excerpts, not file dumps; the critic runs on a mid-tier model.
 6. **Write the committed review artifact** `.lifecycle/<feature>/review.md` with the
    verdict, findings addressed, and any deferred gaps (format in `/lifecycle-guard:review`).
+   Include the critic's `## Rules applied` list (rule ids from `digest.py --rules`, each `caught` or
+   `satisfied`) — the Stop hook records it so the audit knows which rules prevent misses.
    The Stop hook requires this file to show `VERDICT: PASS` (or `review: deferred — <reason>`)
    before a feature may be `status: done` — so the review cannot be silently skipped.
 7. **Definition of done** (paste the evidence, don't just claim it): run the build, the

@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
-from lg_common import headless, load_config, read_hook_input  # noqa: E402
+from lg_common import headless, ingest_usage, load_config, read_hook_input  # noqa: E402
 
 OPEN = re.compile(r"^\s*[-*] \[ \]\s+(.*)$")
 
@@ -36,11 +36,15 @@ def main() -> None:
     if headless():
         return
     data = read_hook_input()
+    cwd = Path(data.get("cwd") or os.getcwd())
+    try:  # record which learned rules reviews applied (feeds /audit); never affects the gate
+        ingest_usage(cwd)
+    except Exception:
+        pass
     if data.get("stop_hook_active"):
         return  # already continued once because of us; don't loop forever
     if not load_config().get("stop_gate", True):
         return
-    cwd = Path(data.get("cwd") or os.getcwd())
     blockers = []
     for f in active_task_files(cwd):
         open_items = [m.group(1).strip() for line in f.read_text(encoding="utf-8").splitlines()

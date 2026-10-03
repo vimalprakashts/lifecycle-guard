@@ -7,9 +7,12 @@
   digest.py --mark     record that learning finished now
   digest.py --stats    counts only
   digest.py --audit [--json]
-                       review learned rules: date, origin project, scope, age, and flags
+                       review learned rules: date, origin project, scope, age, usage, and flags
                        (no-origin / stale / looks-project-specific) for /lifecycle-guard:audit
+  digest.py --rules    list learned rules with their ids (the reviewer cites these in review.md)
+  digest.py --usage    which rules reviews applied / caught misses with (for /lg-status)
 """
+import hashlib
 import json
 import os
 import re
@@ -241,6 +244,12 @@ GENERIC_NAMES = {"test", "tests", "code", "rule", "rules", "app", "apps", "src",
                  "backend", "admin", "home", "desktop", "documents", "downloads", "scratch", "demo"}
 
 
+def rule_id(text):
+    """Stable id for a rule: hash of its normalized text (rewording a rule gives it a new id)."""
+    norm = re.sub(r"\s+", " ", re.sub(r"[*_`]", "", text or "")).strip().lower()
+    return hashlib.sha1(norm.encode("utf-8")).hexdigest()[:8]
+
+
 def kb_files():
     files = [DATA / "core.md", DATA / "style.md"] + sorted((DATA / "domains").glob("*.md"))
     return [f for f in files if f.exists()]
@@ -283,7 +292,7 @@ def parse_rules():
             text = re.sub(r"^\s*[-*]\s*(\[[ x~]\]\s*)?", "", text)
             text = re.sub(r"\s+", " ", text).strip()
             rules.append({
-                "file": str(f.relative_to(DATA)), "line": n, "rule": text,
+                "id": rule_id(text), "file": str(f.relative_to(DATA)), "line": n, "rule": text,
                 "learned": m.group(1) if m else None,
                 "origin": ((m.group(2) or "").strip() or None) if m else None,
                 "cause": (m.group(3) or "").strip() if m else "",
@@ -294,17 +303,101 @@ def parse_rules():
     return rules
 
 
+# --- rule usage ---------------------------------------------------------------
+# review.md lists the rules a review applied; the Stop hook copies them into usage.jsonl:
+#   ## Rules applied
+#   - 1a2b3c4d caught — admin view was missing
+#   - 5e6f7a8b satisfied
+# lenient about decoration an LLM may add: **id**, [id], `id`, "id (core.md:55) — caught"
+USAGE_LINE = re.compile(r"^\s*[-*]\s*[\[`*]*([0-9a-f]{8})[\]`*]*\b.*?\b(caught|satisfied)\b", re.I)
+
+
+def parse_rules_applied(text):
+    out, inside = [], False
+    for line in (text or "").splitlines():
+        if line.startswith("#"):
+            inside = line.lstrip("#").strip().lower().startswith("rules applied")
+            continue
+        m = USAGE_LINE.match(line) if inside else None
+        if m:
+            out.append((m.group(1).lower(), m.group(2).lower()))
+    return out
+
+
+def ingest_usage(project_dir):
+    """Append rule usage from every .lifecycle/*/review.md under project_dir. Idempotent: keyed on
+    the review's parsed rules (not its prose), so repeated Stop runs and prose edits add nothing,
+    while a re-review that changes the rules list counts as new evidence. Returns records added."""
+    root = Path(project_dir) / ".lifecycle"
+    if not root.is_dir():
+        return 0
+    usage = DATA / "usage.jsonl"
+    seen = {r.get("review") for r in read_jsonl(usage)}
+    added = []
+    for rev in sorted(root.glob("*/review.md")):
+        applied = parse_rules_applied(rev.read_text(encoding="utf-8", errors="ignore"))
+        if not applied:
+            continue
+        ident = f"{Path(project_dir).resolve()}|{rev.parent.name}|{sorted(applied)}"
+        key = hashlib.sha1(ident.encode()).hexdigest()[:16]
+        if key in seen:
+            continue
+        seen.add(key)
+        when = rev.stat().st_mtime  # when the review happened, not when we noticed it
+        for rid, outcome in applied:
+            added.append({"ts": when, "rule": rid, "outcome": outcome,
+                          "project": project_name(str(project_dir)), "feature": rev.parent.name, "review": key})
+    if added:
+        DATA.mkdir(parents=True, exist_ok=True)
+        with open(usage, "a", encoding="utf-8") as f:
+            for r in added:
+                f.write(json.dumps(r) + "\n")
+    return len(added)
+
+
+def usage_by_rule():
+    stats = {}
+    for r in read_jsonl(DATA / "usage.jsonl"):
+        s = stats.setdefault(r.get("rule"), {"applied": 0, "caught": 0, "last_applied": None})
+        s["applied"] += 1
+        s["caught"] += r.get("outcome") == "caught"
+        day = time.strftime("%Y-%m-%d", time.localtime(r.get("ts", 0)))
+        s["last_applied"] = max(filter(None, [s["last_applied"], day]))
+    return stats
+
+
+def usage_summary():
+    """Compact usage report for /lg-status: catches, never-applied count, top rules."""
+    rules, _ = audit_rules()
+    never = [r for r in rules if not r["applied"]]
+    top = sorted((r for r in rules if r["applied"]), key=lambda r: (-r["caught"], -r["applied"]))[:5]
+    print(f"{len(rules)} learned rules · {sum(1 for r in rules if r['caught'])} have caught a miss · "
+          f"{len(never)} never applied in a review")
+    for r in top:
+        print(f"- `{r['id']}` applied {r['applied']}× (caught {r['caught']}, last {r['last_applied']}) — {r['rule'][:100]}")
+
+
+def rules_list():
+    for r in parse_rules():
+        scope = f" [scope: {r['scope']}]" if r["scope"] else ""
+        print(f"{r['id']}  {r['file']}:{r['line']}{scope}  {r['rule'][:160]}")
+
+
 def audit_rules():
     c = cfg()
     limit = int(c.get("review_after_days", 90))
     now = time.time()
     projects = known_projects()
     rules = parse_rules()
+    usage = usage_by_rule()
     for r in rules:
+        r.update(usage.get(r["id"], {"applied": 0, "caught": 0, "last_applied": None}))
         flags = ["malformed"] if r["malformed"] else []
         if not r["origin"]:
             flags.append("no-origin")
-        age = days_since(r["reviewed"] or r["learned"], now)
+        # a rule that keeps getting applied stays fresh; only unreviewed AND unused rules go stale
+        last_seen = max(filter(None, [r["learned"], r["reviewed"], r["last_applied"]]), default=None)
+        age = days_since(last_seen, now)
         r["age_days"] = age
         if age is not None and age > limit:
             flags.append("stale")
@@ -331,15 +424,19 @@ def audit():
     flagged = [r for r in rules if r["flags"]]
     counts = Counter(fl for r in rules for fl in r["flags"])
     scoped = sum(1 for r in rules if r["scope"])
+    never = sum(1 for r in rules if not r["applied"])
+    caught = sum(1 for r in rules if r["caught"])
     print(f"# Rule audit — {len(rules)} learned rules, {len(flagged)} need review "
           f"(stale after {limit} days)\n")
     print(f"no-origin: {counts['no-origin']} · stale: {counts['stale']} · "
-          f"looks-project-specific: {counts['looks-project-specific']} · scoped: {scoped}\n")
+          f"looks-project-specific: {counts['looks-project-specific']} · scoped: {scoped}")
+    print(f"usage: {caught} rules have caught a miss · {never} never applied in a review\n")
     for r in flagged:
         where = f"@ {r['origin']}" if r["origin"] else "@ ?"
         scope = f" [scope: {r['scope']}]" if r["scope"] else ""
         rev = f", reviewed {r['reviewed']}" if r["reviewed"] else ""
-        print(f"- `{r['file']}:{r['line']}` learned {r['learned'] or '?'} {where}{scope}{rev} "
+        rev += f", applied {r['applied']}× (caught {r['caught']})" if r["applied"] else ", never applied"
+        print(f"- `{r['id']}` `{r['file']}:{r['line']}` learned {r['learned'] or '?'} {where}{scope}{rev} "
               f"({'age unknown' if r['age_days'] is None else str(r['age_days']) + 'd'}) — **{', '.join(r['flags'])}**")
         if r.get("mentions"):
             print(f"  mentions: {', '.join(r['mentions'])}")
@@ -350,5 +447,8 @@ def audit():
 
 if __name__ == "__main__":
     arg = sys.argv[1] if len(sys.argv) > 1 else ""
+    if arg == "--ingest-usage":  # used by the Stop hook; also handy by hand
+        print(ingest_usage(sys.argv[2] if len(sys.argv) > 2 else "."))
+        sys.exit(0)
     {"--bootstrap": bootstrap, "--mark": mark, "--stats": stats,
-     "--audit": audit}.get(arg, since_last)()
+     "--audit": audit, "--rules": rules_list, "--usage": usage_summary}.get(arg, since_last)()

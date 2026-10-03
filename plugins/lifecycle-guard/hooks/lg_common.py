@@ -26,7 +26,7 @@ SEED = PLUGIN_ROOT / "skills" / "lifecycle-guard" / "seed"
 # scripts/digest.py owns prompt cleaning + correction detection (shared with /learn, /bootstrap)
 sys.path.append(str(PLUGIN_ROOT / "scripts"))
 try:
-    from digest import CORRECTION, clean_prompt  # noqa: E402,F401
+    from digest import CORRECTION, clean_prompt, ingest_usage  # noqa: E402,F401
 except Exception as _err:  # never let a broken digest import take down the Stop gate
     import re as _re
     try:  # leave a trace: with the fallback, correction logging is off
@@ -40,6 +40,9 @@ except Exception as _err:  # never let a broken digest import take down the Stop
     def clean_prompt(text):
         t = (text or "").strip()
         return "" if t.startswith("<") else t
+
+    def ingest_usage(project_dir):
+        return 0
 
 DEFAULT_CONFIG = {
     "auto_learn": True,            # run /learn in background at session end

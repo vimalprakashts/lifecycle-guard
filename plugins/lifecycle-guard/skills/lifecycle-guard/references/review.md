@@ -8,7 +8,8 @@ critic is READ-ONLY — it returns findings; you fix them.
 > You are an independent, skeptical reviewer of a feature you did NOT build. Review
 > only; do not edit. Read `.lifecycle/<FEATURE>/spec.md` + `tasks.md`, the changed
 > files [<CHANGED FILES / AREA>], the project CLAUDE.md, and the checklists in
-> `~/.claude/lifecycle-guard/` (core.md, style.md, domains/*.md). Run tests/linters
+> `~/.claude/lifecycle-guard/` (core.md, style.md, domains/*.md); list rule ids with
+> `python3 ~/.claude/lifecycle-guard/bin/digest.py --rules`. Run tests/linters
 > if present. Walk the spec per actor and per state transition against the code.
 > Fail the review (VERDICT: FAIL) if any hard gate is open:
 > - Actor coverage — every actor can do AND SEE their part (not admin-only).
@@ -35,6 +36,8 @@ critic is READ-ONLY — it returns findings; you fix them.
 > Output ONLY:
 > VERDICT: PASS|FAIL
 > FINDINGS (most severe first): N. [severity] file:line — problem → fix
+> RULES APPLIED: exactly `- <id> caught — <gap>` or `- <id> satisfied`, one line per learned rule
+> you checked, the 8-char id copied verbatim from --rules
 > Be concrete and high-signal; say what you couldn't verify rather than guessing.
 
 ## The loop (token-aware)

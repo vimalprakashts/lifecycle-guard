@@ -14,6 +14,7 @@ This command is interactive. If you are running headless (`LG_HEADLESS=1`, or `c
    - **malformed** — has a `_(learned …)_` stamp the parser can't read; fix the stamp.
    - **stale** — not learned or reviewed within `review_after_days` (config, default 90).
    - **looks-project-specific** — unscoped but names a known project or a hostname.
+   Each rule also shows its usage from past reviews: `applied N× (caught M)` or `never applied`. A rule that keeps being applied stays fresh (age counts from its last use); `caught` means it exposed a real miss — strong evidence to keep it. A stale rule that was never applied is the prime candidate for scope or drop.
    If nothing is flagged (and mode isn't `all`), say so and stop.
 
 2. For **no-origin** rules, try to recover the origin before asking: search `corrections.jsonl` and `prompts.jsonl` (each record has `cwd`) and `bootstrap/part-*.md` (lines are `[project date]`) for the rule's cause or distinctive words around its learned date. Propose the project you find, or `?` if none.
@@ -29,7 +30,7 @@ This command is interactive. If you are running headless (`LG_HEADLESS=1`, or `c
    - keep → remove every existing `_(reviewed …)_` stamp and append one `_(reviewed <today>)_` at the end of the line.
    - scope → insert `[scope: <project>]` right after `- [ ] ` and stamp `_(reviewed <today>)_` (replacing older ones).
    - set origin → turn `_(learned DATE: cause)_` into `_(learned DATE @ <project>: cause)_`.
-   - reword → replace the rule text and keep its learned stamp; stamp `_(reviewed <today>)_`.
+   - reword → replace the rule text and keep its learned stamp; stamp `_(reviewed <today>)_`. Rewording changes the rule's id, so its usage history starts over — mention that when recommending a reword of a rule with catches.
    - drop → delete the line.
 
 5. Append to `changelog.md`: `## <today> audit`, then one line per decision: `<keep|scope|reword|drop|origin> <file>: <rule, first 80 chars> — <reason>`. For **drop** and **reword**, log the full original line verbatim (indented under the entry) so it can be restored without digging through backups.

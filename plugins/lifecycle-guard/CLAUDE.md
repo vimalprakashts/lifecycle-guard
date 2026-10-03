@@ -60,7 +60,7 @@ hooks/
   on_prompt.py                    UserPromptSubmit: log prompt, detect correction/feature, nudge
   on_stop.py                      Stop: the definition-of-done gate (see above)
   on_session_end.py               SessionEnd: auto-run /learn in the background when enough piled up
-scripts/digest.py                 prepares raw material for /learn (also --bootstrap/--mark/--stats/--audit)
+scripts/digest.py                 prepares raw material for /learn (also --bootstrap/--mark/--stats/--audit/--rules/--ingest-usage)
 skills/lifecycle-guard/
   SKILL.md                        the full-lifecycle workflow the agent follows
   references/review.md            review rubric the critic/`/review` uses
@@ -69,6 +69,7 @@ skills/lifecycle-guard/
   seed/domains/{auth,notifications,payments}.md  domain checklists seed
 tests/test_provenance.py          stdlib unittest: hook origin + audit flags (temp LG_DATA_DIR)
 tests/test_prompt_noise.py        stdlib unittest: injected/pasted text never feeds learning
+tests/test_rule_usage.py          stdlib unittest: rule ids, Stop-hook usage ingest, audit freshness
 ```
 
 ### Important: learned data lives OUTSIDE the plugin
@@ -84,6 +85,7 @@ on every run so updates propagate.
   domains/*.md       per-domain checklists (payments, auth, notifications, …); auto-created
   prompts.jsonl      every prompt you type (raw material for style learning)
   corrections.jsonl  prompts that look like "you missed X" (raw material for gap rules)
+  usage.jsonl        which learned rules each review applied (caught | satisfied), from review.md
   changelog.md       every change /learn made (audit + revert reference)
   backups/           file snapshots taken before each learn
   bin/digest.py      copy of scripts/digest.py (fixed path for commands)
@@ -100,6 +102,12 @@ Legacy rules without `@ project` still parse — `digest.py --audit` flags them 
 audit also flags `stale` (older than `review_after_days`, default 90) and `looks-project-specific`
 (unscoped but names a project from `prompts.jsonl` or a hostname). `/lifecycle-guard:audit` turns
 the report into keep / scope / reword / drop decisions (user-confirmed, backed up, changelogged).
+**Usage:** a rule's id = first 8 hex of sha1(normalized text) (`digest.py --rules`); rewording gives a
+new id, so history restarts (fail-safe: worst case one extra review). The reviewer reports
+`RULES APPLIED`, the main agent copies it into review.md `## Rules applied`, and `on_stop.py` ingests it
+(`digest.ingest_usage`, idempotent per project|feature|parsed-rules key — prose edits don't recount,
+and a re-review listing identical rules+outcomes isn't new evidence; `ts` = review.md mtime; runs
+before the loop guard, never affects the gate). Audit freshness = days since max(learned, reviewed, last applied).
 
 ---
 
@@ -128,7 +136,7 @@ ticking boxes → run critic → fix findings → write `review.md` PASS → `st
   not done / half-done…") it logs to `corrections.jsonl` and tells the agent to write the
   lesson into the right checklist now; if it matches the FEATURE regex it reminds the agent
   to run the lifecycle workflow. Gated by `feature_nudge`.
-- **Stop → `on_stop.py`**: the gate described above. Guards against infinite loops via
+- **Stop → `on_stop.py`**: first ingests rule usage from `.lifecycle/*/review.md` (fail-safe), then the gate described above. Guards against infinite loops via
   `stop_hook_active`; respects `stop_gate` config; only fires on active features.
 - **SessionEnd → `on_session_end.py`**: if `auto_learn` is on and enough new
   corrections/prompts accumulated since `last_learn_ts` (thresholds in config), spawns a
@@ -174,7 +182,7 @@ Defaults live in `lg_common.DEFAULT_CONFIG`; `config.json` overrides them.
   the plugin; only `skills/lifecycle-guard/seed/` ships and seeds it.
 - **Bump `version` in `.claude-plugin/plugin.json`** on a meaningful change (history: 1.2.0
   entity-coverage → 1.3.0 entity cross-links on every page → 1.4.0 orient-before-building /
-  no-duplicate-surface → 1.5.0 business-logic reconciliation → 1.6.0 rule provenance, scoping + /audit → 1.6.1 learn only from the user's own words).
+  no-duplicate-surface → 1.5.0 business-logic reconciliation → 1.6.0 rule provenance, scoping + /audit → 1.6.1 learn only from the user's own words → 1.7.0 rule usage tracking).
 - **Releases are automatic:** a version bump merged to `main` triggers `.github/workflows/release.yml`
   (tests → `v<version>` release, notes = bump commit body + commits since last tag). CI
   (`.github/workflows/test.yml`) runs the tests on every push/PR on Python 3.9 and 3.13.
