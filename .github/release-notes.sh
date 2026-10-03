@@ -5,10 +5,12 @@ set -euo pipefail
 tag="$1"
 plugin_json="plugins/lifecycle-guard/.claude-plugin/plugin.json"
 prev=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
-bump=$(git log -1 --format=%H -- "$plugin_json")
+# the commit that introduced this exact version string (not just any later edit to plugin.json)
+bump=$(git log -1 --format=%H -S"\"${tag#v}\"" -- "$plugin_json")
+bump=${bump:-$(git log -1 --format=%H -- "$plugin_json")}
 range=${prev:+$prev..}HEAD
 
-body=$(git log -1 --format=%b "$bump" | sed '/^Co-Authored-By:/d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
+body=$(git log -1 --format=%b "$bump" | { grep -viE '^(co-authored-by|signed-off-by):' || true; } | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
 if [ -n "$body" ]; then
   printf '%s\n\n' "$body"
 fi

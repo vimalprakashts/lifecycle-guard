@@ -25,7 +25,10 @@ Tag already exists → skip (idempotent). Tests fail → no release. Manual `wor
 ## Failure / edge cases
 Version unchanged but file touched → tag exists → skip. Malformed plugin.json → job fails loudly.
 Several commits in one push → tag on the pushed head (`github.sha`). First tag missing → notes list
-all commits. Concurrency group prevents double releases on rapid pushes.
+all commits. No concurrency group (it would drop queued runs); two racing runs for one version →
+the second `gh release create` fails on the existing tag (no duplicate). A missed run → manual
+dispatch on main. Publishing only from `refs/heads/main`. Release gated on the full test matrix
+(reusable `test.yml`).
 
 ## Cross-cutting
 Placement: new `.github/workflows/` (none existed). Docs: CONTRIBUTING "Releasing", plugin CLAUDE.md.
@@ -34,7 +37,7 @@ Security: GITHUB_TOKEN only, least privilege; third-party actions limited to off
 ## Acceptance
 - Push → test workflow green on both Pythons.
 - dispatch dry_run → notes printed, no release created.
-- Existing tag (v1.6.1) → release job skips.
+- Existing tag (v1.6.1) → release job skips (verified via dry-run dispatch, which also prints notes).
 
 ## Out of scope
 Linting, multi-plugin releases (only lifecycle-guard exists), changelog file.

@@ -1,7 +1,8 @@
 name: release
 
 # Bumping "version" in plugins/lifecycle-guard/.claude-plugin/plugin.json on main publishes
-# GitHub release v<version>, after the tests pass. Idempotent: an existing tag is skipped.
+# GitHub release v<version>, after the full test matrix passes. Idempotent: an existing tag is
+# skipped, so a missed run is recovered by running this workflow manually on main (dry_run off).
 on:
   push:
     branches: [main]
@@ -14,15 +15,15 @@ on:
         type: boolean
         default: true
 
-concurrency:
-  group: release
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
 jobs:
+  tests:
+    uses: ./.github/workflows/test.yml
+
   release:
+    needs: tests
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -31,19 +32,10 @@ jobs:
         with:
           fetch-depth: 0  # full history + tags for the notes
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Run tests
-        run: |
-          set -e
-          for t in plugins/lifecycle-guard/tests/test_*.py; do python "$t"; done
-
       - name: Read version
         id: version
         run: |
-          v=$(python -c "import json; print(json.load(open('plugins/lifecycle-guard/.claude-plugin/plugin.json'))['version'])")
+          v=$(python3 -c "import json; print(json.load(open('plugins/lifecycle-guard/.claude-plugin/plugin.json'))['version'])")
           echo "tag=v$v" >> "$GITHUB_OUTPUT"
           if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
@@ -53,18 +45,23 @@ jobs:
           fi
 
       - name: Build notes
-        id: notes
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          bash .github/release-notes.sh "${{ steps.version.outputs.tag }}" > "$RUNNER_TEMP/notes.md"
+          bash .github/release-notes.sh "$TAG" > "$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md"
 
       - name: Publish release
-        if: steps.version.outputs.exists == 'false' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+        # only from main; a manual run publishes only when dry_run is switched off
+        if: >-
+          steps.version.outputs.exists == 'false' && github.ref == 'refs/heads/main' &&
+          !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --target "${{ github.sha }}" \
-            --title "${{ steps.version.outputs.tag }} — lifecycle-guard" \
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG — lifecycle-guard" \
             --notes-file "$RUNNER_TEMP/notes.md" \
             --latest
