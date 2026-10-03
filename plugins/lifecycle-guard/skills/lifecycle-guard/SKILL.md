@@ -13,7 +13,7 @@ All learned knowledge lives in `~/.claude/lifecycle-guard/`:
 - `style.md` — the user's stack, conventions and preferences, learned from their prompts
 - `domains/<domain>.md` — domain checklists (payments, auth, …), each with a `## Learned` section of rules that came from real misses
 
-Treat `## Learned` items as mandatory: each one exists because it was missed before. **Exception — scope:** a rule prefixed `[scope: <project>]` applies only when the current project directory's basename is `<project>`; elsewhere skip it and mark it `N/A — scoped to <project>` in checklist coverage. Each rule's `_(learned DATE @ project: cause)_` stamp says where it came from; if a rule obviously doesn't fit the current codebase, follow the safer reading and suggest `/lifecycle-guard:audit` in one line.
+Treat `## Learned` items as mandatory: each one exists because it was missed before. **Exception — scope:** a rule prefixed `[scope: <name>]` applies only in that project or in repos nested under a folder of that name. Don't work this out by hand: `python3 ~/.claude/lifecycle-guard/bin/digest.py --rules` marks every rule that doesn't apply here `N/A here (scope: …)` — mark those `N/A — scoped to <name>` in checklist coverage. Each rule's `_(learned DATE @ project: cause)_` stamp says where it came from; if a rule obviously doesn't fit the current codebase, follow the safer reading and suggest `/lifecycle-guard:audit` in one line.
 
 ## Workflow
 
@@ -128,7 +128,7 @@ view — a CTA that opens a generic page is a FAIL.
 When the user points out something missing or wrong (a hook will flag it too):
 
 1. Fix it and add it to the active `tasks.md`.
-2. Generalize it into a reusable rule. "You didn't add refund on admin panel" becomes "Admin can initiate full and partial refunds with reason; refund state reflected to customer." Append it under `## Learned` in the right domain file, or `core.md` if it applies to any feature, as `- [ ] <rule> _(learned YYYY-MM-DD @ <project>: <cause>)_` where `<project>` is the current project directory's basename. If it can only hold in this project (names its tenants, hosts, paths), prefix `[scope: <project>]`.
+2. Generalize it into a reusable rule. "You didn't add refund on admin panel" becomes "Admin can initiate full and partial refunds with reason; refund state reflected to customer." Append it under `## Learned` in the right domain file, or `core.md` if it applies to any feature, as `- [ ] <rule> _(learned YYYY-MM-DD @ <project>: <cause>)_` where `<project>` is the label from `python3 ~/.claude/lifecycle-guard/bin/digest.py --project` (the git repo's folder name). If it can only hold in this project (names its tenants, hosts, paths), prefix `[scope: <project>]` — or an enclosing folder's name if it holds for every repo under that folder.
 3. If it's about style or conventions ("use zod not yup", "always paginate admin lists server-side"), append to `style.md` instead.
 4. Check for an existing equivalent rule first. Strengthen its wording rather than duplicating it.
 

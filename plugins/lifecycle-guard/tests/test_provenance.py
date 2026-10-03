@@ -85,7 +85,7 @@ class Provenance(unittest.TestCase):
         unscoped, scoped = sorted(same, key=lambda r: bool(r["scope"]))
         self.assertIn("looks-project-specific", unscoped["flags"])
         self.assertEqual(scoped["scope"], "shop-api")
-        self.assertEqual(scoped["flags"], [])
+        self.assertNotIn("looks-project-specific", scoped["flags"])
 
     def test_review_after_days_config(self):
         (self.data / "core.md").write_text(KB)

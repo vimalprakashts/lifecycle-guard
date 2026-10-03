@@ -32,7 +32,7 @@ critic is READ-ONLY — it returns findings; you fix them.
 >   consistent with existing business rules (min/max order, limits, tax, pricing tiers,
 >   stock thresholds). A value that contradicts a rule (e.g. a budget below the store's
 >   minimum order value) = FAIL. Each key value justified, not picked in isolation.
-> - Every `## Learned` rule satisfied (rules marked `[scope: <project>]` only in that project). Tests cover new transitions and are green.
+> - Every `## Learned` rule satisfied (skip rules `--rules` marks `N/A here`). Tests cover new transitions and are green.
 > Output ONLY:
 > VERDICT: PASS|FAIL
 > FINDINGS (most severe first): N. [severity] file:line — problem → fix

@@ -60,7 +60,7 @@ class Usage(unittest.TestCase):
     def test_ids_are_stable_and_match_between_rules_and_audit(self):
         self.assertEqual(rule_id("Admin  can   refund"), rule_id("admin can refund"))
         self.assertEqual(rule_id("Scoped **bold** rule"), rule_id("Scoped bold rule"))
-        listed = {line.split()[0] for line in self.digest("--rules").splitlines()}
+        listed = {line.split()[0] for line in self.digest("--rules").splitlines() if not line.startswith("#")}
         self.assertEqual(listed, {r["id"] for r in self.audit().values()})
 
     def test_parse_rules_applied_only_reads_its_section(self):

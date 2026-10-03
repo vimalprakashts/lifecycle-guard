@@ -60,7 +60,7 @@ hooks/
   on_prompt.py                    UserPromptSubmit: log prompt, detect correction/feature, nudge
   on_stop.py                      Stop: the definition-of-done gate (see above)
   on_session_end.py               SessionEnd: auto-run /learn in the background when enough piled up
-scripts/digest.py                 prepares raw material for /learn (also --bootstrap/--mark/--stats/--audit/--rules/--ingest-usage)
+scripts/digest.py                 prepares raw material for /learn (also --bootstrap/--mark/--stats/--audit/--rules/--usage/--project/--prune-logs/--ingest-usage)
 skills/lifecycle-guard/
   SKILL.md                        the full-lifecycle workflow the agent follows
   references/review.md            review rubric the critic/`/review` uses
@@ -70,6 +70,8 @@ skills/lifecycle-guard/
 tests/test_provenance.py          stdlib unittest: hook origin + audit flags (temp LG_DATA_DIR)
 tests/test_prompt_noise.py        stdlib unittest: injected/pasted text never feeds learning
 tests/test_rule_usage.py          stdlib unittest: rule ids, Stop-hook usage ingest, audit freshness
+tests/test_stop_gate.py           stdlib unittest: every Stop gate case (boxes, review, status, guards)
+tests/test_maintenance.py         stdlib unittest: project identity + nested scopes, retention, dupes/size
 ```
 
 ### Important: learned data lives OUTSIDE the plugin
@@ -96,11 +98,18 @@ on every run so updates propagate.
 `core.md`, `style.md`, and `domains/*.md` each carry a `## Learned` section; items there
 are mandatory — each exists because something was missed before, formatted
 `- [ ] [scope: <project>] <rule> _(learned YYYY-MM-DD @ <project>: <cause>)_ _(reviewed YYYY-MM-DD)_`.
-`@ <project>` = origin (cwd basename, via `lg_common.project_of`); `[scope: …]` (optional) = only
-applies in that project (skill + reviewer honour it); `_(reviewed …)_` (optional) = last audit keep.
+`@ <project>` = origin (`digest.project_name`: the enclosing git repo's folder name, else the cwd's
+name — folder names, not remotes, so labels stay stable); `[scope: X]` (optional) = applies where X is
+the project or any enclosing folder below $HOME (`digest.project_scopes`), so an umbrella-folder
+scope covers its nested repos; `digest.py --rules` marks the rest `N/A here` (skill + reviewer rely on
+that, not prose matching); `_(reviewed …)_` (optional) = last audit keep.
 Legacy rules without `@ project` still parse — `digest.py --audit` flags them `no-origin`. The
-audit also flags `stale` (older than `review_after_days`, default 90) and `looks-project-specific`
-(unscoped but names a project from `prompts.jsonl` or a hostname). `/lifecycle-guard:audit` turns
+audit also flags `stale` (older than `review_after_days`, default 90), `looks-project-specific`
+(unscoped but names a project from `prompts.jsonl` or a hostname) and `possible-duplicate` (word-set
+Jaccard ≥ `duplicate_threshold`, default 0.5 — the real KB's max is ~0.17, so it only fires on true
+re-writes; conceptual overlap is /audit's consolidate step), and warns when a file exceeds
+`kb_budget_kb` (12). The audit header is one block ending in a blank line — `/lg-status` reads it
+with `sed -n '1,/^$/p'`, so never insert a blank line inside it. `/lifecycle-guard:audit` turns
 the report into keep / scope / reword / drop decisions (user-confirmed, backed up, changelogged).
 **Usage:** a rule's id = first 8 hex of sha1(normalized text) (`digest.py --rules`); rewording gives a
 new id, so history restarts (fail-safe: worst case one extra review). The reviewer reports
@@ -182,7 +191,8 @@ Defaults live in `lg_common.DEFAULT_CONFIG`; `config.json` overrides them.
   the plugin; only `skills/lifecycle-guard/seed/` ships and seeds it.
 - **Bump `version` in `.claude-plugin/plugin.json`** on a meaningful change (history: 1.2.0
   entity-coverage → 1.3.0 entity cross-links on every page → 1.4.0 orient-before-building /
-  no-duplicate-surface → 1.5.0 business-logic reconciliation → 1.6.0 rule provenance, scoping + /audit → 1.6.1 learn only from the user's own words → 1.7.0 rule usage tracking).
+  no-duplicate-surface → 1.5.0 business-logic reconciliation → 1.6.0 rule provenance, scoping + /audit → 1.6.1 learn only from the user's own words → 1.7.0 rule usage tracking → 1.8.0 gate tests + fixes, git-root identity, retention, dupes/size;
+  full history in the repo-root `CHANGELOG.md`).
 - **Releases are automatic:** a version bump merged to `main` triggers `.github/workflows/release.yml`
   (tests → `v<version>` release, notes = bump commit body + commits since last tag). CI
   (`.github/workflows/test.yml`) runs the tests on every push/PR on Python 3.9 and 3.13.
@@ -206,8 +216,14 @@ Defaults live in `lg_common.DEFAULT_CONFIG`; `config.json` overrides them.
   A feature with all boxes ticked but no `review.md` PASS **still blocks** — that's intentional.
 - Deferring is first-class: `- [~] item — reason` satisfies the gate. Don't fake `- [x]`.
 - The critic is read-only by design. If it could edit, it would stop being an independent check.
-- Project identity is the cwd **basename** — two repos with the same folder name share an origin
-  label, and a session started in a subfolder (`src`) is labelled `src`. Good enough for review;
+- Project identity is the git root's **folder name** (no subprocess; walks up for `.git`, stopping at
+  $HOME). Two repos with the same folder name share a label. Good enough for review and scoping;
   don't build security decisions on it.
+- Log retention: SessionEnd prunes `prompts.jsonl`/`corrections.jsonl` older than
+  `log_retention_days` (180) but never past `last_learn_ts`, and keeps unparseable lines.
+  `usage.jsonl` and `changelog.md` are never pruned.
+- The Stop gate reads the `status:` **header line** and a filled-in `VERDICT: PASS` **line** (regexes
+  `STATUS` / `VERDICT_OK` in on_stop.py) — a phrase inside a task or the unedited `PASS | FAIL`
+  template must not count. `tests/test_stop_gate.py` pins every gate case.
 - Everything the hooks log is the user's own prompt text — treat the KB as sensitive (it may
   contain project details); it stays local under `~/.claude/`.

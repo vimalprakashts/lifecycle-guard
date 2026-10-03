@@ -9,7 +9,13 @@
   digest.py --audit [--json]
                        review learned rules: date, origin project, scope, age, usage, and flags
                        (no-origin / stale / looks-project-specific) for /lifecycle-guard:audit
-  digest.py --rules    list learned rules with their ids (the reviewer cites these in review.md)
+  digest.py --rules [--cwd DIR]
+                       list learned rules with ids (cited in review.md); scoped rules that don't
+                       apply to DIR's project are marked "N/A here"
+  digest.py --prune-logs
+                       drop log records older than log_retention_days (never unlearned ones)
+  digest.py --project [DIR]
+                       the project label for DIR and the names a [scope: X] tag matches
   digest.py --usage    which rules reviews applied / caught misses with (for /lg-status)
 """
 import hashlib
@@ -19,6 +25,7 @@ import re
 import sys
 import time
 from collections import Counter
+from functools import lru_cache
 from pathlib import Path
 
 DATA = Path(os.environ.get("LG_DATA_DIR", Path.home() / ".claude" / "lifecycle-guard"))
@@ -110,8 +117,37 @@ def read_jsonl(path, since=0.0):
     return out
 
 
+def _ancestors(cwd):
+    """cwd and its parents, stopping below $HOME (or at the filesystem root)."""
+    home = Path.home()
+    p = Path(cwd)
+    while p != p.parent and p != home:
+        yield p
+        p = p.parent
+
+
+@lru_cache(maxsize=256)
 def project_name(cwd):
-    return Path(cwd).name if cwd else "?"
+    """Origin label for a directory: the enclosing git repo's folder name, so a session started in
+    a subfolder (src/, apps/ui) is labelled with its repo. No git repo → the folder's own name.
+    Folder names, not remote names: remotes can differ from folders and would relabel old rules."""
+    if not cwd:
+        return "?"
+    for p in _ancestors(cwd):
+        if (p / ".git").exists():
+            return p.name
+    return Path(cwd).name or "?"
+
+
+def project_scopes(cwd):
+    """Names a `[scope: X]` rule may use to apply here: the project plus every enclosing folder, so a
+    scope on an umbrella folder (one holding several repos) covers each repo inside it."""
+    names = [project_name(cwd)] + [p.name for p in _ancestors(cwd)] if cwd else []
+    return list(dict.fromkeys(n for n in names if n and n != "?"))
+
+
+def in_scope(scope, cwd):
+    return not scope or scope.lower() in {n.lower() for n in project_scopes(cwd)}
 
 
 def user_records(name, since=0.0, corrections=False):
@@ -166,7 +202,7 @@ def bootstrap():
         return
     rows = []
     for f in PROJECTS.glob("*/*.jsonl"):
-        # same origin label the prompt hook uses (cwd basename), so rules learned in the
+        # same origin label the prompt hook uses (digest.project_name: the git repo folder), so rules learned in the
         # moment and from bootstrap name their project identically
         fallback = f.parent.name.split("-")[-1] or f.parent.name
         for ts, cwd, t in user_texts(f):
@@ -209,6 +245,39 @@ def bootstrap():
     print(f"Wrote {part} chunk file(s) to {out}/ — process each part-NN.md in order.")
 
 
+def prune_logs(now=None):
+    """Drop prompt/correction log records older than log_retention_days (0 = keep forever), but never
+    one newer than the last learn (not yet distilled). Lines that don't parse are kept. Atomic rewrite.
+    usage.jsonl and changelog.md are kept: they are small and are the evidence/audit trail."""
+    c = cfg()
+    days = int(c.get("log_retention_days", 180))
+    if days <= 0:
+        return {}
+    cutoff = min((now or time.time()) - days * 86400, c.get("last_learn_ts", 0))
+    removed = {}
+    for name in ("prompts.jsonl", "corrections.jsonl"):
+        path = DATA / name
+        if not path.exists():
+            continue
+        keep, dropped = [], 0
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                ts = json.loads(line).get("ts")
+                old = isinstance(ts, (int, float)) and ts < cutoff  # no usable ts → keep
+            except Exception:
+                old = False
+            if old:
+                dropped += 1
+            else:
+                keep.append(line)
+        if dropped:
+            tmp = path.with_suffix(".jsonl.tmp")
+            tmp.write_text("".join(l + "\n" for l in keep), encoding="utf-8")
+            os.replace(tmp, path)
+        removed[name] = dropped
+    return removed
+
+
 def mark():
     c = cfg()
     c["last_learn_ts"] = time.time()
@@ -248,6 +317,23 @@ def rule_id(text):
     """Stable id for a rule: hash of its normalized text (rewording a rule gives it a new id)."""
     norm = re.sub(r"\s+", " ", re.sub(r"[*_`]", "", text or "")).strip().lower()
     return hashlib.sha1(norm.encode("utf-8")).hexdigest()[:8]
+
+
+SIMILARITY_STOP = set("a an the and or of to in on for not is are be by as at from with when every each must "
+                      "its it this that new any all only never no than then into same one their own".split())
+
+
+def rule_tokens(text):
+    return {w for w in re.findall(r"[a-z][a-z0-9]+", (text or "").lower())
+            if w not in SIMILARITY_STOP and len(w) > 2}
+
+
+def similarity(a, b):
+    """Word-set overlap (Jaccard). Catches the same lesson written twice in slightly different words;
+    conceptual overlap (one rule a special case of another) is left to Claude in /audit."""
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
 
 
 def kb_files():
@@ -378,9 +464,19 @@ def usage_summary():
 
 
 def rules_list():
+    cwd = sys.argv[sys.argv.index("--cwd") + 1] if "--cwd" in sys.argv else os.getcwd()
+    print(f"# learned rules for project `{project_name(cwd)}` — skip lines marked N/A here")
     for r in parse_rules():
-        scope = f" [scope: {r['scope']}]" if r["scope"] else ""
+        scope = ""
+        if r["scope"]:
+            scope = f" [scope: {r['scope']}]" if in_scope(r["scope"], cwd) else f" N/A here (scope: {r['scope']})"
         print(f"{r['id']}  {r['file']}:{r['line']}{scope}  {r['rule'][:160]}")
+
+
+def project_info():
+    cwd = sys.argv[2] if len(sys.argv) > 2 else os.getcwd()
+    print(f"project: {project_name(cwd)}")
+    print(f"scope matches: {', '.join(project_scopes(cwd))}")
 
 
 def audit_rules():
@@ -390,9 +486,17 @@ def audit_rules():
     projects = known_projects()
     rules = parse_rules()
     usage = usage_by_rule()
+    threshold = float(c.get("duplicate_threshold", 0.5))
+    tokens = {id(r): rule_tokens(r["rule"]) for r in rules}
+    for r in rules:
+        r["similar_to"] = [o["id"] for o in rules if o is not r
+                           and similarity(tokens[id(r)], tokens[id(o)]) >= threshold]
+        r["exact_duplicate"] = any(o is not r and o["id"] == r["id"] for o in rules)
     for r in rules:
         r.update(usage.get(r["id"], {"applied": 0, "caught": 0, "last_applied": None}))
         flags = ["malformed"] if r["malformed"] else []
+        if r["similar_to"]:
+            flags.append("possible-duplicate")
         if not r["origin"]:
             flags.append("no-origin")
         # a rule that keeps getting applied stays fresh; only unreviewed AND unused rules go stale
@@ -413,10 +517,19 @@ def audit_rules():
     return rules, limit
 
 
+def kb_sizes():
+    budget = float(cfg().get("kb_budget_kb", 12))
+    return budget, [(str(f.relative_to(DATA)), round(f.stat().st_size / 1024, 1)) for f in kb_files()]
+
+
 def audit():
     rules, limit = audit_rules()
+    budget, sizes = kb_sizes()
+    over = [(name, kb) for name, kb in sizes if kb > budget]
     if "--json" in sys.argv:
-        print(json.dumps({"review_after_days": limit, "rules": rules}, indent=2, ensure_ascii=False))
+        print(json.dumps({"review_after_days": limit, "kb_budget_kb": budget,
+                          "kb_files": [{"file": n, "kb": kb, "over_budget": kb > budget} for n, kb in sizes],
+                          "rules": rules}, indent=2, ensure_ascii=False))
         return
     if not rules:
         print("No learned rules found in the knowledge base.")
@@ -427,10 +540,15 @@ def audit():
     never = sum(1 for r in rules if not r["applied"])
     caught = sum(1 for r in rules if r["caught"])
     print(f"# Rule audit — {len(rules)} learned rules, {len(flagged)} need review "
-          f"(stale after {limit} days)\n")
+          f"(stale after {limit} days)")  # header is one block (lg-status reads up to the first blank line)
     print(f"no-origin: {counts['no-origin']} · stale: {counts['stale']} · "
-          f"looks-project-specific: {counts['looks-project-specific']} · scoped: {scoped}")
-    print(f"usage: {caught} rules have caught a miss · {never} never applied in a review\n")
+          f"looks-project-specific: {counts['looks-project-specific']} · "
+          f"possible-duplicate: {counts['possible-duplicate']} · scoped: {scoped}")
+    print(f"usage: {caught} rules have caught a miss · {never} never applied in a review")
+    if over:
+        print("size: " + ", ".join(f"{n} {kb} KB" for n, kb in over) +
+              f" over the {budget:g} KB budget — consolidate overlapping rules")
+    print()
     for r in flagged:
         where = f"@ {r['origin']}" if r["origin"] else "@ ?"
         scope = f" [scope: {r['scope']}]" if r["scope"] else ""
@@ -440,6 +558,11 @@ def audit():
               f"({'age unknown' if r['age_days'] is None else str(r['age_days']) + 'd'}) — **{', '.join(r['flags'])}**")
         if r.get("mentions"):
             print(f"  mentions: {', '.join(r['mentions'])}")
+        if r["exact_duplicate"]:
+            print(f"  exact duplicate: the same rule text appears more than once (id {r['id']})")
+        others = [i for i in r["similar_to"] if i != r["id"]]
+        if others:
+            print(f"  similar to: {', '.join(others)}")
         print(f"  rule: {r['rule'][:220]}")
         if r["cause"]:
             print(f"  cause: {r['cause'][:160]}")
@@ -447,8 +570,12 @@ def audit():
 
 if __name__ == "__main__":
     arg = sys.argv[1] if len(sys.argv) > 1 else ""
+    if arg == "--prune-logs":
+        print(json.dumps(prune_logs()))
+        sys.exit(0)
     if arg == "--ingest-usage":  # used by the Stop hook; also handy by hand
         print(ingest_usage(sys.argv[2] if len(sys.argv) > 2 else "."))
         sys.exit(0)
     {"--bootstrap": bootstrap, "--mark": mark, "--stats": stats,
-     "--audit": audit, "--rules": rules_list, "--usage": usage_summary}.get(arg, since_last)()
+     "--audit": audit, "--rules": rules_list, "--usage": usage_summary,
+     "--project": project_info}.get(arg, since_last)()

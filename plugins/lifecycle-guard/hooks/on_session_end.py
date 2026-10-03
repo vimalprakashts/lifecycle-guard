@@ -13,13 +13,17 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
-from lg_common import DATA, count_since, ensure_data_dir, headless, load_config  # noqa: E402
+from lg_common import DATA, count_since, ensure_data_dir, headless, load_config, prune_logs  # noqa: E402
 
 
 def main() -> None:
     if headless():
         return
     ensure_data_dir()
+    try:  # retention: the prompt log shouldn't grow forever (never drops unlearned records)
+        prune_logs()
+    except Exception:
+        pass
     cfg = load_config()
     if not cfg.get("auto_learn"):
         return

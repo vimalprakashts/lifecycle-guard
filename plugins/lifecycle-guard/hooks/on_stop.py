@@ -15,6 +15,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 from lg_common import headless, ingest_usage, load_config, read_hook_input  # noqa: E402
 
 OPEN = re.compile(r"^\s*[-*] \[ \]\s+(.*)$")
+# header line, tolerating markdown decoration: "status: active", "> status: active", "- status: active",
+# "**Status:** active" — but not a task ("- [ ] … set status: active")
+STATUS = re.compile(r"^[\s>*_-]*status\W{0,3}:\W*(\w+)", re.I | re.M)
+# a filled-in verdict line — not the unedited template "VERDICT: PASS | FAIL"
+VERDICT_OK = re.compile(r"^\W*verdict:\W*pass\b(?!\s*\|)|^\W*review:\s*deferred\b", re.I | re.M)
 
 
 def active_task_files(cwd: Path):
@@ -24,10 +29,12 @@ def active_task_files(cwd: Path):
     files = []
     for f in root.glob("*/tasks.md"):
         try:
-            head = f.read_text(encoding="utf-8")[:500].lower()
+            head = f.read_text(encoding="utf-8")[:500]
         except Exception:
             continue
-        if "status: active" in head:
+        # the header line, not the phrase anywhere ("- [ ] set status: active" is a task, not a status)
+        m = STATUS.search(head)
+        if m and m.group(1).lower() == "active":
             files.append(f)
     return sorted(files, key=lambda p: p.stat().st_mtime, reverse=True)
 
@@ -63,8 +70,7 @@ def main() -> None:
             ok = False
             try:
                 if rev.exists():
-                    t = rev.read_text(encoding="utf-8").lower()
-                    ok = "verdict: pass" in t or "review: deferred" in t
+                    ok = bool(VERDICT_OK.search(rev.read_text(encoding="utf-8")))
             except Exception:
                 ok = False
             if not ok:

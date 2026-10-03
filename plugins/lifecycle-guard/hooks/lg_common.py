@@ -26,7 +26,8 @@ SEED = PLUGIN_ROOT / "skills" / "lifecycle-guard" / "seed"
 # scripts/digest.py owns prompt cleaning + correction detection (shared with /learn, /bootstrap)
 sys.path.append(str(PLUGIN_ROOT / "scripts"))
 try:
-    from digest import CORRECTION, clean_prompt, ingest_usage  # noqa: E402,F401
+    from digest import CORRECTION, clean_prompt, ingest_usage, prune_logs  # noqa: E402,F401
+    from digest import project_name as project_of  # noqa: E402,F401
 except Exception as _err:  # never let a broken digest import take down the Stop gate
     import re as _re
     try:  # leave a trace: with the fallback, correction logging is off
@@ -44,6 +45,12 @@ except Exception as _err:  # never let a broken digest import take down the Stop
     def ingest_usage(project_dir):
         return 0
 
+    def prune_logs(now=None):
+        return {}
+
+    def project_of(cwd):
+        return (Path(cwd).name if cwd else "") or "?"
+
 DEFAULT_CONFIG = {
     "auto_learn": True,            # run /learn in background at session end
     "auto_learn_min_corrections": 2,
@@ -51,6 +58,9 @@ DEFAULT_CONFIG = {
     "stop_gate": True,             # block "done" while tasks.md has open boxes
     "feature_nudge": True,         # inject lifecycle reminder on feature-like prompts
     "review_after_days": 90,       # /audit flags learned rules older than this as stale
+    "log_retention_days": 180,     # prune prompt/correction logs older than this (0 = keep forever)
+    "duplicate_threshold": 0.5,    # /audit flags rule pairs this similar as possible duplicates
+    "kb_budget_kb": 12,            # /audit warns when a knowledge file grows past this size
     "last_learn_ts": 0,
 }
 
@@ -80,12 +90,6 @@ def ensure_data_dir() -> None:
         (DATA / "changelog.md").write_text("# lifecycle-guard changelog\n\n")
     if not (DATA / "config.json").exists():
         save_config(DEFAULT_CONFIG)
-
-
-def project_of(cwd: str) -> str:
-    """Origin label for a learned rule: the project directory's basename (never a full path)."""
-    name = Path(cwd).name if cwd else ""
-    return name or "?"
 
 
 def load_config() -> dict:

@@ -59,7 +59,8 @@ def main() -> None:
             f"{DATA}/domains/ (create the domain file if none fits) or {DATA}/core.md if it applies to every "
             f"feature; format: '- [ ] <rule> _(learned YYYY-MM-DD @ {project}: <one-line cause>)_'. "
             f"If the rule only makes sense in this project (names its tenants, hosts, paths, entities), "
-            f"prefix it with '[scope: {project}]' so it is not applied elsewhere. Skip duplicates. "
+            f"prefix it with '[scope: {project}]' so it is not applied elsewhere (a scope also covers "
+            f"repos nested under a folder of that name). Skip duplicates. "
             "If it is a style/convention correction rather than missed scope, append it to "
             f"{DATA}/style.md instead. Do this silently in one edit; mention it in one short line at the end."
         )

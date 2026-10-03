@@ -130,7 +130,7 @@ Every learned rule carries its provenance, so it can be questioned later:
 - [ ] [scope: shop-api] <rule> _(learned 2026-10-03 @ shop-api: <why>)_ _(reviewed 2027-01-05)_
 ```
 
-`@ shop-api` is the project it was learned in; `[scope: …]` (optional) limits it to that project so a lesson born in one codebase isn't applied everywhere; `_(reviewed …)_` records the last time you confirmed it. `/lifecycle-guard:audit` lists rules that are stale, have no recorded origin, or look project-specific but are global, and walks you through keep / scope / reword / drop — every decision is backed up and logged to `changelog.md`.
+`@ shop-api` is the project it was learned in (the git repo's folder name); `[scope: …]` (optional) limits it to that project — or to every repo under a folder of that name — so a lesson born in one codebase isn't applied everywhere; `_(reviewed …)_` records the last time you confirmed it. `/lifecycle-guard:audit` lists rules that are stale, have no recorded origin, or look project-specific but are global, and walks you through keep / scope / reword / drop — every decision is backed up and logged to `changelog.md`.
 
 Rules also earn their place with evidence. Every independent review lists the learned rules it applied in `review.md` (`- <rule-id> caught — <gap>` or `- <rule-id> satisfied`), and the Stop hook records them in `usage.jsonl`. The audit then shows each rule as `applied N× (caught M)` or `never applied`: rules that keep getting applied stay fresh, and rules nobody has used in `review_after_days` come up for review.
 
@@ -149,13 +149,16 @@ Edit `~/.claude/lifecycle-guard/config.json`:
 | `auto_learn_min_prompts` | `40` | …or min new prompts to trigger it |
 | `stop_gate` | `true` | Block "done" while an active `tasks.md` has open boxes |
 | `feature_nudge` | `true` | Inject the lifecycle reminder on feature-like prompts |
-| `review_after_days` | `90` | `/lifecycle-guard:audit` flags rules not learned or reviewed within this many days |
+| `review_after_days` | `90` | `/lifecycle-guard:audit` flags rules not learned, reviewed or applied within this many days |
+| `log_retention_days` | `180` | Prune logged prompts/corrections older than this at session end (never ones not yet learned); `0` keeps them forever |
+| `duplicate_threshold` | `0.5` | Word overlap at which `/audit` flags two rules as possible duplicates |
+| `kb_budget_kb` | `12` | `/audit` warns when a knowledge file grows past this size (every file is loaded for every feature) |
 
 ---
 
 ## Privacy & cost
 
-- **Local only.** Your prompts are logged to `~/.claude/lifecycle-guard/prompts.jsonl` on your machine and never leave it. The learn step is instructed to never record secrets, credentials, customer names or personal data into the checklists.
+- **Local only.** Your prompts are logged to `~/.claude/lifecycle-guard/prompts.jsonl` on your machine and never leave it. Only what you typed is kept (pasted text and system-injected messages are stripped), and records older than `log_retention_days` (180) are pruned once they've been learned from. The learn step is instructed to never record secrets, credentials, customer names or personal data into the checklists.
 - **Auto-learn uses tokens.** With `auto_learn: true`, a background `claude -p` run fires at session end once the thresholds are met — that's a real (small) model call. Set `"auto_learn": false` to turn it off and run `/lifecycle-guard:learn` by hand instead.
 
 ---
