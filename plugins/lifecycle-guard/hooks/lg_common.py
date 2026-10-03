@@ -23,6 +23,24 @@ PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve()
 DATA = Path(os.environ.get("LG_DATA_DIR", Path.home() / ".claude" / "lifecycle-guard"))
 SEED = PLUGIN_ROOT / "skills" / "lifecycle-guard" / "seed"
 
+# scripts/digest.py owns prompt cleaning + correction detection (shared with /learn, /bootstrap)
+sys.path.append(str(PLUGIN_ROOT / "scripts"))
+try:
+    from digest import CORRECTION, clean_prompt  # noqa: E402,F401
+except Exception as _err:  # never let a broken digest import take down the Stop gate
+    import re as _re
+    try:  # leave a trace: with the fallback, correction logging is off
+        DATA.mkdir(parents=True, exist_ok=True)
+        with open(DATA / "hook-errors.log", "a", encoding="utf-8") as _f:
+            _f.write(f"{time.strftime('%Y-%m-%d %H:%M')} digest import failed, learning paused: {_err!r}\n")
+    except Exception:
+        pass
+    CORRECTION = _re.compile(r"(?!x)x")  # matches nothing: no false corrections, no crash
+
+    def clean_prompt(text):
+        t = (text or "").strip()
+        return "" if t.startswith("<") else t
+
 DEFAULT_CONFIG = {
     "auto_learn": True,            # run /learn in background at session end
     "auto_learn_min_corrections": 2,
@@ -94,10 +112,15 @@ def count_since(name: str, since: float) -> int:
     with open(p, encoding="utf-8") as f:
         for line in f:
             try:
-                if json.loads(line).get("ts", 0) > since:
-                    n += 1
+                r = json.loads(line)
             except Exception:
-                pass
+                continue
+            if r.get("ts", 0) <= since:
+                continue
+            # ignore records older versions logged from injected/pasted text
+            text = clean_prompt(r.get("prompt"))
+            if text and (name != "corrections.jsonl" or CORRECTION.search(text)):
+                n += 1
     return n
 
 

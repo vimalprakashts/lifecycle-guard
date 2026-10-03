@@ -12,22 +12,8 @@ import re
 import sys
 
 sys.path.insert(0, __import__("os").path.dirname(__file__))
-from lg_common import (DATA, append_jsonl, ensure_data_dir, headless,  # noqa: E402
-                       load_config, project_of, read_hook_input)
-
-CORRECTION = re.compile(
-    r"\b("
-    r"you (missed|forgot|skipped|ignored|didn'?t|did not|haven'?t|have not|never)"
-    r"|(is|are|was) missing|missing (the|a|an)?|forgot|left out"
-    r"|not (done|complete|completed|finished|working|handled|implemented|covered)"
-    r"|half[- ]?(done|baked|way)?|incomplete|partially"
-    r"|where (is|are) the|what about (the)?"
-    r"|(also|still) (need|needs|add|handle|missing)"
-    r"|should (also|have)|why (didn'?t|did ?n'?t|no|is there no)"
-    r"|again (you|it)|same mistake|i told you|as i said"
-    r")\b",
-    re.I,
-)
+from lg_common import (CORRECTION, DATA, append_jsonl, clean_prompt,  # noqa: E402
+                       ensure_data_dir, headless, load_config, project_of, read_hook_input)
 
 FEATURE = re.compile(
     r"\b(build|implement|develop|create|add|integrate|design|make|set ?up|wire up)\b"
@@ -52,7 +38,8 @@ def main() -> None:
     if headless():
         return
     data = read_hook_input()
-    prompt = (data.get("prompt") or "").strip()
+    # only the user's own words: drop task notifications, system reminders, pasted text, placeholders
+    prompt = clean_prompt(data.get("prompt"))
     if not prompt or prompt.startswith("/"):
         return
     ensure_data_dir()

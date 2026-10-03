@@ -32,7 +32,7 @@ hooks, skill and docs are just as welcome.
 - Hooks are plain Python 3, no third-party packages — keep it that way so it runs anywhere `python3` does.
 - Test locally: `/plugin marketplace add ~/path/to/your/clone` → `/plugin install lifecycle-guard@vimal-tools` → `/reload-plugins`, then try a feature prompt and a correction and watch `~/.claude/lifecycle-guard/`.
 - A hook must **never** break the session — keep the top-level `try/except … pass` in each hook intact.
-- Run the tests: `python3 plugins/lifecycle-guard/tests/test_provenance.py` (stdlib only; uses a temp `LG_DATA_DIR`, never your real knowledge base).
+- Run the tests: `for t in plugins/lifecycle-guard/tests/test_*.py; do python3 $t; done` (stdlib only; uses a temp `LG_DATA_DIR`, never your real knowledge base).
 
 ## Pull requests
 

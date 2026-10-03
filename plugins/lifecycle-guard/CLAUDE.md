@@ -68,6 +68,7 @@ skills/lifecycle-guard/
   seed/style.md                   style/conventions seed
   seed/domains/{auth,notifications,payments}.md  domain checklists seed
 tests/test_provenance.py          stdlib unittest: hook origin + audit flags (temp LG_DATA_DIR)
+tests/test_prompt_noise.py        stdlib unittest: injected/pasted text never feeds learning
 ```
 
 ### Important: learned data lives OUTSIDE the plugin
@@ -173,14 +174,18 @@ Defaults live in `lg_common.DEFAULT_CONFIG`; `config.json` overrides them.
   the plugin; only `skills/lifecycle-guard/seed/` ships and seeds it.
 - **Bump `version` in `.claude-plugin/plugin.json`** on a meaningful change (history: 1.2.0
   entity-coverage → 1.3.0 entity cross-links on every page → 1.4.0 orient-before-building /
-  no-duplicate-surface → 1.5.0 business-logic reconciliation → 1.6.0 rule provenance, scoping + /audit).
-- **Run the tests** before committing: `python3 plugins/lifecycle-guard/tests/test_provenance.py`.
+  no-duplicate-surface → 1.5.0 business-logic reconciliation → 1.6.0 rule provenance, scoping + /audit → 1.6.1 learn only from the user's own words).
+- **Run the tests** before committing: `for t in plugins/lifecycle-guard/tests/test_*.py; do python3 $t; done`.
   `digest.py` honours `LG_DATA_DIR` too, so tests never touch the real KB.
 - **Hooks must stay fast and fail-safe** — each wraps `main()` in try/except and prints nothing
   on error (a crashing hook must never break the user's turn). Keep them dependency-free (stdlib
   only) and under the configured timeouts (10–15s).
 - **`scripts/digest.py` is the source of truth**; it's copied to `~/.claude/lifecycle-guard/bin/`
-  on every hook run, so edit it here, not there.
+  on every hook run, so edit it here, not there. It also owns `clean_prompt()` (what the user
+  actually typed: drops `<task-notification>`/`<system-reminder>`/command blocks, `<pasted_content>`
+  and `[Image #N]` placeholders) and the single `CORRECTION` regex; the hooks import both via
+  `lg_common` (with a safe fallback so a broken import never disables the Stop gate). Old log
+  records are filtered at read time — never rewrite the user's jsonl files.
 - **Changing seed files** only affects NEW installs (existing KBs already copied them). To push a
   rule to existing users, it has to go through `/learn` or they re-seed.
 

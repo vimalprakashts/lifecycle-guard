@@ -22,12 +22,64 @@ DATA = Path(os.environ.get("LG_DATA_DIR", Path.home() / ".claude" / "lifecycle-g
 PROJECTS = Path.home() / ".claude" / "projects"
 CHUNK_CHARS = 45000
 
+# Single source of truth for "what did the user actually type" and "is it a correction".
+# hooks/on_prompt.py and hooks/lg_common.py import these, so detection can't drift between
+# the live hook and /learn or /bootstrap.
 CORRECTION = re.compile(
-    r"\b(you (missed|forgot|skipped|ignored|didn'?t|did not|haven'?t|never)|missing|forgot|left out|"
-    r"not (done|complete|working|handled|implemented|covered)|half|incomplete|partially|"
-    r"where (is|are) the|what about|(also|still) (need|add|handle)|should (also|have)|"
-    r"why (didn'?t|no)|same mistake|i told you|as i said|again)\b", re.I)
-NOISE = ("<command-", "<local-command", "Caveat:", "[Request interrupted", "<system-reminder")
+    r"\b("
+    r"you (missed|forgot|skipped|ignored|didn'?t|did not|haven'?t|have not|never)"
+    r"|(is|are|was) missing|missing|forgot|left out"
+    r"|not (done|complete|completed|finished|working|handled|implemented|covered)"
+    r"|half[- ]?(done|baked|way)?|incomplete|partially"
+    r"|where (is|are) the|what about (the)?"
+    r"|(also|still) (need|needs|add|handle|missing)"
+    r"|should (also|have)|why (didn'?t|did ?n'?t|no|is there no)"
+    r"|again (you|it)|same mistake|i told you|as i said"
+    r")\b",
+    re.I,
+)
+# Text the harness injects as a "user" turn: never the user's own words.
+# Tag blocks are stripped when they LEAD the prompt (user text after them is kept);
+# plain-text markers mean the whole turn is injected.
+MACHINE_TAGS = ("task-notification", "system-reminder", "command-name", "command-message", "command-args",
+                "command-contents", "local-command-stdout", "local-command-stderr", "local-command-caveat",
+                "bash-input", "bash-stdout", "bash-stderr", "user-prompt-submit-hook", "session-start-hook",
+                "ide_opened_file", "ide_selection", "ide_diagnostics", "tool_use_error", "teammate-message")
+MACHINE_TEXT = ("Caveat:", "[Request interrupted", "This session is being continued from a previous conversation")
+LEADING_TAG = re.compile(r"^<(%s)\b[^>]*>" % "|".join(re.escape(t) for t in MACHINE_TAGS), re.I)
+# Someone else's words pasted in (e.g. a comment being answered) — not the user's voice or corrections.
+# Innermost-first, repeated, so nested/multiple blocks can't leak; unclosed = strip to the end.
+PASTED_INNER = re.compile(r"<pasted_content\b[^>]*>(?:(?!<pasted_content\b).)*?</pasted_content\b[^>]*>",
+                          re.S | re.I)
+PASTED_OPEN = re.compile(r"<pasted_content\b.*\Z", re.S | re.I)
+PASTED_STRAY = re.compile(r"</pasted_content\b[^>]*>", re.I)
+PLACEHOLDER = re.compile(r"\[(?:Image|Pasted text) #\d+[^\]]*\]", re.I)
+
+
+def clean_prompt(text):
+    """The part of a prompt the user typed, or "" if there is none."""
+    t = (text or "").strip()
+    while True:  # peel leading injected blocks; keep what the user typed after them
+        if t.startswith(MACHINE_TEXT):
+            return ""
+        m = LEADING_TAG.match(t)
+        if not m:
+            break
+        close = re.search(r"</%s\s*>" % re.escape(m.group(1)), t, re.I)
+        if not close:
+            return ""
+        t = t[close.end():].lstrip()
+    prev = None
+    while prev != t:
+        prev, t = t, PASTED_INNER.sub(" ", t)
+    t = PASTED_STRAY.sub(" ", PASTED_OPEN.sub("", t))
+    t = PLACEHOLDER.sub(" ", t)
+    t = re.sub(r"[ \t]+", " ", t)
+    return re.sub(r" ?\n ?", "\n", t).strip()
+
+
+def is_correction(text):
+    return bool(CORRECTION.search(clean_prompt(text)))
 
 
 def cfg():
@@ -59,10 +111,21 @@ def project_name(cwd):
     return Path(cwd).name if cwd else "?"
 
 
+def user_records(name, since=0.0, corrections=False):
+    """Log records reduced to the user's own words. Filters at read time, so records logged by
+    older versions (task notifications, pasted text) are ignored without rewriting user data."""
+    out = []
+    for r in read_jsonl(DATA / name, since):
+        text = clean_prompt(r.get("prompt"))
+        if text and (not corrections or CORRECTION.search(text)):
+            out.append({**r, "prompt": text})
+    return out
+
+
 def since_last():
     since = cfg().get("last_learn_ts", 0)
-    prompts = read_jsonl(DATA / "prompts.jsonl", since)
-    corrections = read_jsonl(DATA / "corrections.jsonl", since)
+    prompts = user_records("prompts.jsonl", since)
+    corrections = user_records("corrections.jsonl", since, corrections=True)
     print(f"# Digest since {time.strftime('%Y-%m-%d %H:%M', time.localtime(since)) if since else 'beginning'}\n")
     print(f"{len(prompts)} prompts, {len(corrections)} flagged corrections\n")
     print("## Flagged corrections (highest signal: missed scope / repeated mistakes)\n")
@@ -89,8 +152,8 @@ def user_texts(path):
         elif isinstance(content, list):
             texts = [c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text"]
         for t in texts:
-            t = t.strip()
-            if t and not t.startswith(NOISE) and not t.startswith("/"):
+            t = clean_prompt(t)
+            if t and not t.startswith("/"):
                 yield r.get("timestamp", ""), r.get("cwd", ""), t
 
 
@@ -153,10 +216,10 @@ def mark():
 def stats():
     since = cfg().get("last_learn_ts", 0)
     print(json.dumps({
-        "prompts_total": len(read_jsonl(DATA / "prompts.jsonl")),
-        "corrections_total": len(read_jsonl(DATA / "corrections.jsonl")),
-        "prompts_new": len(read_jsonl(DATA / "prompts.jsonl", since)),
-        "corrections_new": len(read_jsonl(DATA / "corrections.jsonl", since)),
+        "prompts_total": len(user_records("prompts.jsonl")),
+        "corrections_total": len(user_records("corrections.jsonl", corrections=True)),
+        "prompts_new": len(user_records("prompts.jsonl", since)),
+        "corrections_new": len(user_records("corrections.jsonl", since, corrections=True)),
         "domains": sorted(p.stem for p in (DATA / "domains").glob("*.md")),
         "last_learn": time.strftime("%Y-%m-%d %H:%M", time.localtime(since)) if since else "never",
     }, indent=2))
