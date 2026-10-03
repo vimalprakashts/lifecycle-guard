@@ -98,6 +98,21 @@ class HookAndReaders(unittest.TestCase):
         self.assertIn("correction", json.loads(out)["hookSpecificOutput"]["additionalContext"])
         self.assertEqual(self.lines("corrections.jsonl")[0]["prompt"], "you missed the refund on admin")
 
+    def test_slash_command_refreshes_stale_bin_copy_and_logs_nothing(self):
+        (self.data / "bin").mkdir(parents=True)
+        (self.data / "bin" / "digest.py").write_text("# stale copy from the previous plugin version\n")
+        self.assertEqual(self.hook("/lifecycle-guard:audit"), "")
+        self.assertEqual((self.data / "bin" / "digest.py").read_text(),
+                         (ROOT / "scripts" / "digest.py").read_text())
+        self.assertEqual(self.lines("prompts.jsonl"), [])
+
+    def test_headless_learner_never_touches_the_kb(self):
+        r = subprocess.run([sys.executable, str(ROOT / "hooks" / "on_prompt.py")],
+                           input=json.dumps({"prompt": "/lifecycle-guard:learn auto", "cwd": "/x"}),
+                           capture_output=True, text=True, env={**self.env, "LG_HEADLESS": "1"})
+        self.assertEqual(r.stdout, "")
+        self.assertFalse((self.data / "bin").exists())
+
     def test_old_polluted_logs_ignored_at_read_time(self):
         now = time.time()
         recs = [{"prompt": NOTIFICATION, "cwd": "/x/shop", "ts": now},

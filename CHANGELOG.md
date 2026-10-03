@@ -2,6 +2,10 @@
 
 All notable changes to lifecycle-guard. Releases: https://github.com/vimalprakashts/lifecycle-guard/releases
 
+## 1.8.1 — 2026-10-03
+- The knowledge base's `bin/digest.py` is refreshed on every prompt, including slash commands. Before,
+  running `/lifecycle-guard:audit` right after `/plugin update` used the previous version's script.
+
 ## 1.8.0 — 2026-10-03
 - **Stop gate fixes** (found by the new gate test suite): a draft whose task text mentioned
   `status: active` was treated as active; an unedited `VERDICT: PASS | FAIL` template, or "verdict: pass"

@@ -37,12 +37,14 @@ def emit(context: str) -> None:
 def main() -> None:
     if headless():
         return
+    # refresh the KB (incl. bin/digest.py) before any early return: right after a plugin update the
+    # first prompt is often a slash command (/lifecycle-guard:audit), which must use the new script
+    ensure_data_dir()
     data = read_hook_input()
     # only the user's own words: drop task notifications, system reminders, pasted text, placeholders
     prompt = clean_prompt(data.get("prompt"))
     if not prompt or prompt.startswith("/"):
         return
-    ensure_data_dir()
     cfg = load_config()
 
     rec = {"prompt": prompt[:4000], "cwd": data.get("cwd", ""), "session": data.get("session_id", "")}

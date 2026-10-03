@@ -191,7 +191,7 @@ Defaults live in `lg_common.DEFAULT_CONFIG`; `config.json` overrides them.
   the plugin; only `skills/lifecycle-guard/seed/` ships and seeds it.
 - **Bump `version` in `.claude-plugin/plugin.json`** on a meaningful change (history: 1.2.0
   entity-coverage → 1.3.0 entity cross-links on every page → 1.4.0 orient-before-building /
-  no-duplicate-surface → 1.5.0 business-logic reconciliation → 1.6.0 rule provenance, scoping + /audit → 1.6.1 learn only from the user's own words → 1.7.0 rule usage tracking → 1.8.0 gate tests + fixes, git-root identity, retention, dupes/size;
+  no-duplicate-surface → 1.5.0 business-logic reconciliation → 1.6.0 rule provenance, scoping + /audit → 1.6.1 learn only from the user's own words → 1.7.0 rule usage tracking → 1.8.0 gate tests + fixes, git-root identity, retention, dupes/size → 1.8.1 bin refresh before slash commands;
   full history in the repo-root `CHANGELOG.md`).
 - **Releases are automatic:** a version bump merged to `main` triggers `.github/workflows/release.yml`
   (tests → `v<version>` release, notes = bump commit body + commits since last tag). CI
