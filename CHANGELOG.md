@@ -2,6 +2,19 @@
 
 All notable changes to lifecycle-guard. Releases: https://github.com/vimalprakashts/lifecycle-guard/releases
 
+## 1.9.0 — 2026-10-07
+- **Spec-slop check** (the portability test, adapted from petergyang/no-ai-slop): a requirement that
+  could be pasted unchanged into any feature's spec ("handle errors gracefully", "notify the user",
+  "all edge cases covered") is easy to tick while work is half done. New `digest.py --lint-spec`
+  flags the common phrasings in a spec's requirement sections; the reviewer gains a **Spec
+  specificity** hard gate (generic acceptance criteria or failure cases fail the review); the skill
+  applies the test before showing a spec, and learned rules must name a concrete failure.
+- One shipped seed item rewritten ("skip gracefully" → skip that recipient, log it, keep sending).
+- CI: GitHub Actions pinned to commit SHAs; new manifest test validates plugin/marketplace manifests,
+  command/agent/skill frontmatter, hook wiring, SHA pinning, and that CHANGELOG matches plugin.json.
+- `PRIVACY.md`: what's stored, retention, what leaves the machine, how to delete.
+- 72 tests.
+
 ## 1.8.1 — 2026-10-03
 - The knowledge base's `bin/digest.py` is refreshed on every prompt, including slash commands. Before,
   running `/lifecycle-guard:audit` right after `/plugin update` used the previous version's script.

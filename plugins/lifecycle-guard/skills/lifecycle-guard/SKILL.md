@@ -47,6 +47,14 @@ Create `.lifecycle/<feature-slug>/spec.md` in the project root:
 8. **Acceptance criteria** — Given/When/Then, at least one per state transition and per actor.
 9. **Out of scope** — explicit.
 
+**Portability test** (before showing the spec): a requirement line that could be pasted unchanged into
+any other feature's spec specifies nothing — "handle errors gracefully", "notify the user", "ensure
+security", "all edge cases covered". It reads as covered and is easy to tick while the work is half
+done. Rewrite each one to name the concrete actor, state, trigger, channel, error or limit ("gateway
+timeout → order stays `pending_payment`; retry job after 5 min; customer sees 'payment pending'").
+Run `python3 ~/.claude/lifecycle-guard/bin/digest.py --lint-spec .lifecycle/<slug>/spec.md
+.lifecycle/<slug>/tasks.md` to catch the common phrasings; the reviewer checks the rest.
+
 Apply `style.md` throughout (stack, naming, folder layout, UI conventions).
 
 ### 3. Write tasks and get approval
@@ -128,7 +136,7 @@ view — a CTA that opens a generic page is a FAIL.
 When the user points out something missing or wrong (a hook will flag it too):
 
 1. Fix it and add it to the active `tasks.md`.
-2. Generalize it into a reusable rule. "You didn't add refund on admin panel" becomes "Admin can initiate full and partial refunds with reason; refund state reflected to customer." Append it under `## Learned` in the right domain file, or `core.md` if it applies to any feature, as `- [ ] <rule> _(learned YYYY-MM-DD @ <project>: <cause>)_` where `<project>` is the label from `python3 ~/.claude/lifecycle-guard/bin/digest.py --project` (the git repo's folder name). If it can only hold in this project (names its tenants, hosts, paths), prefix `[scope: <project>]` — or an enclosing folder's name if it holds for every repo under that folder.
+2. Generalize it into a reusable rule — portable across projects (no project names) but specific about the failure: the situation, the miss, and the check. "You didn't add refund on admin panel" becomes "Admin can initiate full and partial refunds with reason; refund state reflected to customer." Append it under `## Learned` in the right domain file, or `core.md` if it applies to any feature, as `- [ ] <rule> _(learned YYYY-MM-DD @ <project>: <cause>)_` where `<project>` is the label from `python3 ~/.claude/lifecycle-guard/bin/digest.py --project` (the git repo's folder name). If it can only hold in this project (names its tenants, hosts, paths), prefix `[scope: <project>]` — or an enclosing folder's name if it holds for every repo under that folder.
 3. If it's about style or conventions ("use zod not yup", "always paginate admin lists server-side"), append to `style.md` instead.
 4. Check for an existing equivalent rule first. Strengthen its wording rather than duplicating it.
 

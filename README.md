@@ -158,6 +158,8 @@ Edit `~/.claude/lifecycle-guard/config.json`:
 
 ## Privacy & cost
 
+Full details, including what's stored, for how long, what leaves your machine and how to delete it, are in [PRIVACY.md](./PRIVACY.md).
+
 - **Local only.** Your prompts are logged to `~/.claude/lifecycle-guard/prompts.jsonl` on your machine and never leave it. Only what you typed is kept (pasted text and system-injected messages are stripped), and records older than `log_retention_days` (180) are pruned once they've been learned from. The learn step is instructed to never record secrets, credentials, customer names or personal data into the checklists.
 - **Auto-learn uses tokens.** With `auto_learn: true`, a background `claude -p` run fires at session end once the thresholds are met — that's a real (small) model call. Set `"auto_learn": false` to turn it off and run `/lifecycle-guard:learn` by hand instead.
 

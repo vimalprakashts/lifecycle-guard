@@ -10,7 +10,7 @@ Update the lifecycle-guard knowledge base in `~/.claude/lifecycle-guard/` from n
 2. Read `core.md`, `style.md` and every file in `domains/`.
 
 3. From the **flagged corrections**, extract missed-scope lessons. Ignore false positives (questions, unrelated "missing" wording). For each real lesson:
-   - Generalize it into a reusable rule that would have prevented the miss on a *different* project.
+   - Generalize it into a reusable rule that would have prevented the miss on a *different* project: portable across projects (no project, tenant or host names) but specific about the failure — the situation, the miss, and the check. "Handle payments properly" fails that test; "A payment QR for a partially paid order encodes the balance due, not the order total" passes.
    - Put it in the matching `domains/<domain>.md` under `## Learned` (create the domain file if needed, copying the section structure of `payments.md`), or in `core.md` under `## Learned` if it applies to any feature.
    - Format: `- [ ] <rule> _(learned YYYY-MM-DD @ <project>: <cause in under 10 words>)_`. `<project>` is the `[project]` prefix of the correction in the digest; it records where the rule was born so it can be questioned later.
    - If the rule only makes sense in that project (it names its tenants, hosts, paths, entities or data), prefix it: `- [ ] [scope: <project>] <rule> …`. Prefer generalizing the wording so it holds anywhere; scope only what can't be generalized.

@@ -32,6 +32,10 @@ critic is READ-ONLY — it returns findings; you fix them.
 >   consistent with existing business rules (min/max order, limits, tax, pricing tiers,
 >   stock thresholds). A value that contradicts a rule (e.g. a budget below the store's
 >   minimum order value) = FAIL. Each key value justified, not picked in isolation.
+> - Spec specificity — every acceptance criterion and failure case names the concrete actor / state /
+>   trigger / channel / error / limit; a line that fits any feature's spec ("handle errors gracefully",
+>   "notify the user") = `spec-slop` finding quoting the line; generic acceptance/failure line = FAIL.
+>   `digest.py --lint-spec <spec.md> <tasks.md>` catches common phrasings.
 > - Every `## Learned` rule satisfied (skip rules `--rules` marks `N/A here`). Tests cover new transitions and are green.
 > Output ONLY:
 > VERDICT: PASS|FAIL

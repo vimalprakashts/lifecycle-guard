@@ -24,6 +24,7 @@ hooks, skill and docs are just as welcome.
 ## Rule style
 
 - One idea per checkbox; prefer the failure it prevents ("Webhook may arrive before the browser redirect — both paths converge") over a vague noun ("webhooks").
+- Apply the portability test: an item must hold on any codebase (no project specifics) yet name a concrete failure. "Handle errors gracefully" names nothing; run `python3 plugins/lifecycle-guard/scripts/digest.py --lint-spec <file>` on new checklists.
 - No secrets, credentials, customer names, or PII anywhere.
 - Learned-rule format (when documenting one that came from a real miss): `- [ ] <rule> _(learned YYYY-MM-DD @ <project>: <cause in under 10 words>)_`. Add `[scope: <project>]` after the checkbox only if it can't be generalized; seed files should contain none.
 

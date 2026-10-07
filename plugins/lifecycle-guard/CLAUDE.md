@@ -60,7 +60,7 @@ hooks/
   on_prompt.py                    UserPromptSubmit: log prompt, detect correction/feature, nudge
   on_stop.py                      Stop: the definition-of-done gate (see above)
   on_session_end.py               SessionEnd: auto-run /learn in the background when enough piled up
-scripts/digest.py                 prepares raw material for /learn (also --bootstrap/--mark/--stats/--audit/--rules/--usage/--project/--prune-logs/--ingest-usage)
+scripts/digest.py                 prepares raw material for /learn (also --bootstrap/--mark/--stats/--audit/--rules/--usage/--project/--prune-logs/--ingest-usage/--lint-spec)
 skills/lifecycle-guard/
   SKILL.md                        the full-lifecycle workflow the agent follows
   references/review.md            review rubric the critic/`/review` uses
@@ -72,6 +72,8 @@ tests/test_prompt_noise.py        stdlib unittest: injected/pasted text never fe
 tests/test_rule_usage.py          stdlib unittest: rule ids, Stop-hook usage ingest, audit freshness
 tests/test_stop_gate.py           stdlib unittest: every Stop gate case (boxes, review, status, guards)
 tests/test_maintenance.py         stdlib unittest: project identity + nested scopes, retention, dupes/size
+tests/test_spec_lint.py           stdlib unittest: --lint-spec flags generic requirement lines only
+tests/test_manifest.py            stdlib unittest: manifests, frontmatter, hook wiring, SHA pins, CHANGELOG=version
 ```
 
 ### Important: learned data lives OUTSIDE the plugin
@@ -191,7 +193,8 @@ Defaults live in `lg_common.DEFAULT_CONFIG`; `config.json` overrides them.
   the plugin; only `skills/lifecycle-guard/seed/` ships and seeds it.
 - **Bump `version` in `.claude-plugin/plugin.json`** on a meaningful change (history: 1.2.0
   entity-coverage → 1.3.0 entity cross-links on every page → 1.4.0 orient-before-building /
-  no-duplicate-surface → 1.5.0 business-logic reconciliation → 1.6.0 rule provenance, scoping + /audit → 1.6.1 learn only from the user's own words → 1.7.0 rule usage tracking → 1.8.0 gate tests + fixes, git-root identity, retention, dupes/size → 1.8.1 bin refresh before slash commands;
+  no-duplicate-surface → 1.5.0 business-logic reconciliation → 1.6.0 rule provenance, scoping + /audit → 1.6.1 learn only from the user's own words → 1.7.0 rule usage tracking → 1.8.0 gate tests + fixes, git-root identity, retention, dupes/size → 1.8.1 bin refresh before slash commands → 1.9.0 spec-slop lint + reviewer gate, SHA-pinned CI,
+  manifest test, PRIVACY.md;
   full history in the repo-root `CHANGELOG.md`).
 - **Releases are automatic:** a version bump merged to `main` triggers `.github/workflows/release.yml`
   (tests → `v<version>` release, notes = bump commit body + commits since last tag). CI
@@ -211,6 +214,12 @@ Defaults live in `lg_common.DEFAULT_CONFIG`; `config.json` overrides them.
   rule to existing users, it has to go through `/learn` or they re-seed.
 
 ## Gotchas
+
+- `--lint-spec` is advisory and lexical: it lints only requirement sections (actors, state, capabilities,
+  failure/edge, cross-cutting, acceptance, behaviour) when a spec has them, else the whole file; quoted
+  text, code fences and `N/A` lines are mentions, not requirements. It is line-based: multi-line backtick
+  spans aren't recognised, and "notify the user via" + "email" on the next line is still flagged. The reviewer's Spec-specificity gate is the judgement layer.
+- CI actions are pinned to commit SHAs (`test_manifest` enforces it); bump them deliberately.
 
 - The Stop gate keys off `status: active` in `tasks.md`. A `draft` or `done` feature won't block.
   A feature with all boxes ticked but no `review.md` PASS **still blocks** — that's intentional.

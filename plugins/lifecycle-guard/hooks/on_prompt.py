@@ -57,7 +57,9 @@ def main() -> None:
         notes.append(
             "[lifecycle-guard] This message looks like a correction of missed scope or a repeated mistake. "
             "After fixing it: (1) add the missing item to the active .lifecycle/<feature>/tasks.md; "
-            f"(2) generalise it into a reusable rule and append it under '## Learned' in the matching file in "
+            "(2) generalise it into a reusable rule (portable across projects, but specific about the failure: "
+            "the situation, the miss, the check) and "
+            f"append it under '## Learned' in the matching file in "
             f"{DATA}/domains/ (create the domain file if none fits) or {DATA}/core.md if it applies to every "
             f"feature; format: '- [ ] <rule> _(learned YYYY-MM-DD @ {project}: <one-line cause>)_'. "
             f"If the rule only makes sense in this project (names its tenants, hosts, paths, entities), "

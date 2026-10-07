@@ -12,6 +12,9 @@
   digest.py --rules [--cwd DIR]
                        list learned rules with ids (cited in review.md); scoped rules that don't
                        apply to DIR's project are marked "N/A here"
+  digest.py --lint-spec FILE...
+                       flag spec/task lines that could be pasted into any feature's spec unchanged
+                       ("handle errors gracefully") — advisory; the reviewer judges
   digest.py --prune-logs
                        drop log records older than log_retention_days (never unlearned ones)
   digest.py --project [DIR]
@@ -276,6 +279,80 @@ def prune_logs(now=None):
             os.replace(tmp, path)
         removed[name] = dropped
     return removed
+
+
+# --- spec lint ---------------------------------------------------------------
+# The portability test (adapted from petergyang/no-ai-slop): a spec line that could move unchanged into
+# any other feature's spec specifies nothing, and a vague box is easy to tick while the work is half done.
+SPEC_SLOP = [
+    (r"\bgraceful(ly)?\b", "say what happens: which error, what the actor sees, which state the entity ends in"),
+    (r"\b(properly|correctly|appropriately|adequately|as expected)\b",
+     "state the expected result (value, state, message)"),
+    (r"\b(as needed|if needed|if necessary|when appropriate|where applicable)\b", "name the condition"),
+    (r"\b(robust|seamless(ly)?|user[- ]friendly|intuitive|efficient(ly)?|scalable|performant)\b",
+     "replace with something checkable (limit, latency, step count, failure handled)"),
+    (r"\bbest practices?\b", "name the practice"),
+    (r"\b(all|any|every) (edge|corner) cases?\b|\bedge cases (are )?(handled|covered)\b", "list the edge cases"),
+    (r"(?<![/\w])etc\b\.?|\band so on\b|\bvarious\b", "list the items"),  # not /etc/hosts
+    (r"\b(TBD|TODO|FIXME)\b|\?\?\?", "decide it, or move it to Out of scope"),
+    (r"\b(ensure|make sure|keep)\b.{0,25}\bsecur(e|ity)\b|\bsecurity (is )?(handled|ensured)\b",
+     "name the permission check, tenant scope or threat"),
+    (r"\bhandle (all |any )?(the )?(errors?|failures?|exceptions?)\b", "name each failure and its outcome"),
+    (r"\bnotif(y|ies|ied) (the )?(users?|customers?|admins?)\b"
+     r"(?!.*\b(e-?mail|sms|whatsapp|push|in-app|webhook|slack|toast|banner)\b)",
+     "name the channel and the message"),
+]
+SPEC_SLOP_RE = [(re.compile(p, re.I), hint) for p, hint in SPEC_SLOP]
+# mentions, not requirements; a single-quoted span needs non-word chars around it, so the apostrophes in
+# "user's … admin's" or "don't … won't" never swallow the text between them
+QUOTED = re.compile(r"`[^`]*`|\"[^\"]*\"|“[^”]*”|(?<!\w)'[^'\n]{3,}'(?!\w)")
+# Only requirement sections are linted when a spec has them; Goal / Root cause / Out of scope narrative
+# isn't something anyone ticks. A file with none of these headings (tasks.md) is linted in full.
+REQUIREMENT_SECTIONS = re.compile(r"\b(actors?|states?|state machine|capabilit\w*|failures?|edge|cross-cutting|"
+                                  r"acceptance|criteri\w*|behaviou?rs?|requirements?)\b", re.I)
+NEVER_LINT_SECTIONS = re.compile(r"out of scope|checklist coverage", re.I)
+
+
+def lint_spec_text(text):
+    """Return [(line_no, phrase, hint)] for vague requirement lines. Skips code fences, headings,
+    quoted mentions and N/A lines; in a spec with requirement sections, lints only those."""
+    lines = text.splitlines()
+    sectioned = any(l.lstrip().startswith("#") and REQUIREMENT_SECTIONS.search(l) for l in lines)
+    hits, fenced, active = [], False, not sectioned
+    for n, line in enumerate(lines, 1):
+        s = line.strip()
+        if s.startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        if s.startswith("#"):
+            active = (not NEVER_LINT_SECTIONS.search(s)) and (not sectioned or bool(REQUIREMENT_SECTIONS.search(s)))
+            continue
+        if not active or not s or "N/A" in s:
+            continue
+        body = QUOTED.sub(" ", s)
+        for rx, hint in SPEC_SLOP_RE:
+            m = rx.search(body)
+            if m:
+                hits.append((n, m.group(0), hint))
+                break  # one finding per line is enough to make the writer look at it
+    return hits
+
+
+def lint_spec(paths):
+    total = 0
+    for p in paths:
+        path = Path(p)
+        if not path.is_file():
+            print(f"{p}: not found")
+            continue
+        for n, phrase, hint in lint_spec_text(path.read_text(encoding="utf-8", errors="replace")):
+            print(f"{p}:{n} — \"{phrase}\" — {hint}")
+            total += 1
+    print(f"{total} vague line(s). Each could be pasted into any feature's spec: rewrite it to name the "
+          "concrete actor / state / trigger / channel / error / limit." if total else
+          "0 vague lines — every requirement is specific to this feature.")
 
 
 def mark():
@@ -570,6 +647,9 @@ def audit():
 
 if __name__ == "__main__":
     arg = sys.argv[1] if len(sys.argv) > 1 else ""
+    if arg == "--lint-spec":
+        lint_spec(sys.argv[2:])
+        sys.exit(0)
     if arg == "--prune-logs":
         print(json.dumps(prune_logs()))
         sys.exit(0)

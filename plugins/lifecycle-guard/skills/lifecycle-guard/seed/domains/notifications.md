@@ -22,7 +22,7 @@
 - [ ] Scheduled / reminder sends (cron) are gated so they can't double-fire
 
 ## Edge cases
-- [ ] Missing/invalid recipient (no email/phone) — skip gracefully, log, don't crash
+- [ ] Missing/invalid recipient (no email/phone) — skip that recipient, log it with the reason, keep sending to the rest; never fail the whole batch
 - [ ] Provider down → queued, not lost; surfaces in the log
 - [ ] Template variable missing → safe fallback, never ships "{{name}}" to a customer
 - [ ] Duplicate event (e.g. webhook + redirect both fire) → deduped
