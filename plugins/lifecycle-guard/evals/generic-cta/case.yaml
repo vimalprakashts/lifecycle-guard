@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: generic-cta
+description: "Dashboard tile 'Refunds waiting for review' links to the unfiltered orders list."
+tags: [reviewer]
+context:
+  scaffold_script: scaffold.sh

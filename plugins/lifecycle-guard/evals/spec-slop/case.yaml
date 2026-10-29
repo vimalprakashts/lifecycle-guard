@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: spec-slop
+description: "Failure cases and acceptance criteria are generic phrases that specify nothing."
+tags: [reviewer]
+context:
+  scaffold_script: scaffold.sh

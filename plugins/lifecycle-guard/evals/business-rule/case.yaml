@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: business-rule
+description: "Refund amount presets ignore the 'refund ≤ amount paid − already refunded' rule."
+tags: [reviewer]
+context:
+  scaffold_script: scaffold.sh

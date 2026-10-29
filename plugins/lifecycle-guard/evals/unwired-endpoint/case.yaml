@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: unwired-endpoint
+description: "Reject endpoint exists but the admin UI has no reject action."
+tags: [reviewer]
+context:
+  scaffold_script: scaffold.sh

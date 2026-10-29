@@ -5,3 +5,6 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# plugin eval run output
+plugins/*/evals/results/

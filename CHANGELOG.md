@@ -2,6 +2,20 @@
 
 All notable changes to lifecycle-guard. Releases: https://github.com/vimalprakashts/lifecycle-guard/releases
 
+## 1.10.0 — 2026-10-29
+- **Behavioural evals** (adopting "measure first" from Anthropic's article on folding subagents into the
+  main loop): `plugins/lifecycle-guard/evals/` holds 9 golden cases for `claude plugin eval`: seven
+  planted-gap reviews, a clean control, and spec-before-code. Each runs with and without the plugin.
+  See `evals/README.md`.
+- **Review routing fix, found by those evals**: asking "is this feature actually done?" never reached the
+  plugin's reviewer (0/3); Claude reviewed alone. The `/lifecycle-guard:review` description now describes
+  when to use it in users' terms, and routing went to 3/3. The routed reviews found the planted gap 3/3
+  and three real defects plain Claude missed. The command is now scoped to features with a `.lifecycle`
+  spec (not general code or PR review). When the user only asks whether a feature is done, it reports
+  findings and offers to fix them instead of editing.
+- Eval finding: the default eval judge (haiku) misgrades long, multi-finding reviews; use
+  `--judge-model sonnet`.
+
 ## 1.9.0 — 2026-10-07
 - **Spec-slop check** (the portability test, adapted from petergyang/no-ai-slop): a requirement that
   could be pasted unchanged into any feature's spec ("handle errors gracefully", "notify the user",

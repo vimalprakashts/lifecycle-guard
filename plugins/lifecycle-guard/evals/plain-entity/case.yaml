@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: plain-entity
+description: "Order number in the refunds table is plain text, not a link to the order."
+tags: [reviewer]
+context:
+  scaffold_script: scaffold.sh

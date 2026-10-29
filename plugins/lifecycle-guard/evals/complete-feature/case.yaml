@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: complete-feature
+description: "Control: the feature as specified, with no planted gap."
+tags: [reviewer, control]
+context:
+  scaffold_script: scaffold.sh

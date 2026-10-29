@@ -1,5 +1,5 @@
 ---
-description: Run the independent lifecycle reviewer (critic) loop on a feature and write its verdict
+description: Independent definition-of-done review of a built feature that has a .lifecycle/<slug> spec. Use when the user asks whether such a feature is actually done, complete or ready, or asks to review, verify or check it against its spec — runs the fresh-context lifecycle-reviewer critic, reports its findings and records the verdict. Not for general code-style or pull-request review
 argument-hint: "[feature-slug]"
 ---
 
@@ -9,7 +9,7 @@ Run the mandatory independent review for a feature and record the result. Target
 
 2. **Dispatch the critic in a fresh context** — the `lifecycle-reviewer` agent if available, else a fresh general-purpose subagent using `references/review.md`. Pass it the spec/tasks paths and the changed files (paths/diff, NOT the whole repo — token discipline). It returns `VERDICT: PASS|FAIL` + ranked findings across actor coverage, **CTA/deep-link coverage**, action closure, **interactivity**, state visibility, failure/edge cases, security/tenancy, CRUD parity, `## Learned` rules, and tests.
 
-3. **Fix** every critical/high finding (and cheap mediums). Where a fix is a reusable lesson, also apply "Learning in the moment" (append the rule to the right checklist).
+3. **Fix** every critical/high finding (and cheap mediums) — unless the user only asked whether the feature is done: then report the findings, most severe first, with a verdict, and offer to fix them instead of editing. Where a fix is a reusable lesson, also apply "Learning in the moment" (append the rule to the right checklist).
 
 4. **Re-dispatch once** to confirm. Stop at PASS or after this 2nd round — never loop more (token cap).
 

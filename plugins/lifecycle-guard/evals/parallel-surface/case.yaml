@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: parallel-surface
+description: "A new top-level 'Refund settings' tab duplicates the existing Payments settings page."
+tags: [reviewer]
+context:
+  scaffold_script: scaffold.sh
