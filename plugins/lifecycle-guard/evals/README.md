@@ -93,5 +93,17 @@ claude plugin eval plugins/lifecycle-guard --scaffold --trust-plugin --judge-mod
       Score 1.00 (3/3 votes).
   - All 9 cases validated in a plugin-only run. Building and validating the suite cost $15.56 in eval
     sessions.
-  - Not yet run: the with/without baseline across all cases (≈54 sessions). Until it runs, the suite shows
+- 2026-10-29: first with/without baseline (9 cases × 3 runs × 2 arms, sonnet judge, $21.18, 22 min).
+  - **The seven planted-gap reviews: delta 0.** Plain Claude found every planted gap 3/3, just as the
+    plugin did. For an explicit "is it done?" on someone else's code with one clear gap, the plugin adds
+    no detection. The plugin's reviews were more thorough on everything else (extra real defects), at
+    about 1.8× the cost. Its distinctive job, an independent check of work the agent built itself, isn't
+    measured by these cases.
+  - **Control: −0.33 was a fixture gap.** One plugin review flagged that the customer refunds component was
+    never mounted, and that was true; plain Claude didn't notice. The fixture now mounts it
+    (`src/customer/OrderPage.jsx`).
+  - **spec-first: +1.00 was rigged.** Both graders only checked `.lifecycle/…`, a path only the plugin
+    knows about, so the no-plugin arm scored 0 by construction. Those graders are now plugin-only
+    indicators, and a new `plan-quality` grader judges the plan in the final response for both arms.
+  - Both corrected cases need re-running before their deltas mean anything. Until it runs, the suite shows
     that the plugin catches these gaps, not how much better it does than plain Claude.

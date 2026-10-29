@@ -1,4 +1,5 @@
 ---
+arm: with-only
 type: file_exists
 path: ".lifecycle/*/spec.md"
 weight: 1

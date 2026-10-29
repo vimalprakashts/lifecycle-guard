@@ -1,4 +1,5 @@
 ---
+arm: with-only
 type: llm
 focus:
   source: file
