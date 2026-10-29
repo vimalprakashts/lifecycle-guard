@@ -20,7 +20,7 @@ All reviewer cases share one fixture: a small shop with a fully specified refund
 | `business-rule` | refund presets ignore "refund ≤ amount paid" | names the conflict with the cap |
 | `parallel-surface` | new "Refund settings" tab duplicates Payments settings | names the duplicate surface |
 | `complete-feature` | none (control) | does **not** claim any of the seven planted gaps (other findings on this small fixture are allowed) |
-| `spec-first` | — (new feature: order cancellation) | a specific spec is written before code |
+| `spec-first` | — (new feature: order cancellation) | the plan covers customer, admin, refund + stock, the ship race and concrete criteria (one grader each) |
 
 Reviewer cases also carry two **routing indicators** (`routed-skill`, `routed-agent`): did the request
 reach `/lifecycle-guard:review` and the `lifecycle-reviewer` agent? In a with/without run they're shown
@@ -104,6 +104,15 @@ claude plugin eval plugins/lifecycle-guard --scaffold --trust-plugin --judge-mod
     (`src/customer/OrderPage.jsx`).
   - **spec-first: +1.00 was rigged.** Both graders only checked `.lifecycle/…`, a path only the plugin
     knows about, so the no-plugin arm scored 0 by construction. Those graders are now plugin-only
-    indicators, and a new `plan-quality` grader judges the plan in the final response for both arms.
-  - Both corrected cases need re-running before their deltas mean anything. Until it runs, the suite shows
-    that the plugin catches these gaps, not how much better it does than plain Claude.
+    indicators, and a new `plan-quality` grader judges the plan in the final response for both arms
+    (later split into five `plan-*` graders, see below).
+- 2026-10-29: re-run of the two corrected cases (3 runs × 2 arms, sonnet judge, $6.75).
+  - **Control: 1.00 in both arms** once the customer component was mounted. No false alarms on the 7 dimensions.
+  - **spec-first: 0.00 in both arms, again a grader artifact.** The single `plan-quality` grader needed
+    all 5 points at once, so every run failed on one or two misses. That hid a real difference: the plugin
+    covered the admin side and its own reviewer caught a double-refund path (refund endpoints still
+    accepting cancelled orders); plain Claude had no admin side but did address the shipping race. 2 of 3
+    plugin runs also hit the 900 s timeout mid-review, leaving a fragment as the last message. Fixed by
+    splitting the rubric into five `plan-*` graders (partial credit) and raising the timeout to 1500 s.
+  - Cost/time: the plugin arm ran ~2.5× the cost (about $1.20 vs $0.40 per run) and much longer, because
+    it writes a spec and runs two review rounds.
