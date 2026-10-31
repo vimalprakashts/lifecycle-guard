@@ -36,6 +36,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -43,6 +44,7 @@ from collections import Counter
 from functools import lru_cache
 from pathlib import Path
 
+VERSION = "1.12.0"  # the hooks never replace bin/lg-digest.py with an older copy
 DATA = Path(os.environ.get("LG_DATA_DIR", Path.home() / ".claude" / "lifecycle-guard"))
 PROJECTS = Path.home() / ".claude" / "projects"
 CHUNK_CHARS = 45000
@@ -114,10 +116,26 @@ def cfg():
         return {}
 
 
-def write_atomic(path, text):
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)  # readers never see a half-written file
+def write_atomic(path, text, newline=None):
+    """Replace a file's content all at once: readers never see half a file. Writes next to the REAL file
+    (a symlinked KB or config stays a symlink) and keeps its permissions."""
+    real = Path(os.path.realpath(path))
+    tmp = real.with_name(f".{real.name}.{os.getpid()}.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8", newline=newline) as fh:
+            fh.write(text)
+        if real.exists():
+            try:
+                shutil.copymode(real, tmp)
+            except OSError:
+                pass
+        os.replace(tmp, real)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 def save_cfg(c):
@@ -190,9 +208,10 @@ def in_scope(scope, cwd):
 # Claude Code sets CLAUDE_CODE_ENTRYPOINT=sdk-cli for `claude -p` (sdk-ts / sdk-py for Agent SDK apps);
 # an interactive terminal is `cli`. Prompts in those sessions are written by tools (other plugins'
 # summarizers, app backends, scripts), not by the user, so they must never become rules.
-# The system temp dir only (macOS /var/folders/…/T): where tools run throwaway sessions. /tmp is left out —
-# people do work there, and the observed leak (a summarizer's cwd) was under gettempdir().
-TEMP_ROOTS = tuple({os.path.realpath(tempfile.gettempdir()), "/private/var/folders", "/var/folders"})
+# The per-user system temp dir only (macOS /var/folders/…/T): where tools run throwaway sessions. /tmp is
+# never a root — people work there, and the observed leak (a summarizer's cwd) was under /var/folders.
+TEMP_ROOTS = tuple(({os.path.realpath(tempfile.gettempdir()), "/private/var/folders", "/var/folders"})
+                   - {"/tmp", "/private/tmp"})  # on Linux gettempdir() IS /tmp: only the entrypoint check applies
 
 
 def learn_from_automated():
@@ -258,12 +277,35 @@ def user_records(name, since=0.0, corrections=False):
     return out
 
 
+def digest_max():
+    try:
+        return int(cfg().get("digest_max_chars", 20000))
+    except (TypeError, ValueError):
+        return 20000
+
+
 def since_last():
+    """New material for /learn, capped at digest_max_chars. The window is contiguous and oldest first, so
+    --mark can advance exactly to the last record shown and the rest stays pending for the next run."""
     since = cfg().get("last_learn_ts", 0)
     prompts = user_records("prompts.jsonl", since)
     corrections = user_records("corrections.jsonl", since, corrections=True)
+    budget, cutoff, used, last = digest_max(), None, 0, None
+    for r in sorted(corrections + prompts, key=lambda r: r.get("ts", 0)):
+        used += min(len(r["prompt"]), 800) + 40  # what printing it costs
+        if used > budget:
+            cutoff = last if last is not None else r.get("ts", 0)  # always show at least one record
+            break
+        last = r.get("ts", 0)
+    if cutoff is not None:
+        hidden = sum(1 for r in prompts + corrections if r.get("ts", 0) > cutoff)
+        prompts = [r for r in prompts if r.get("ts", 0) <= cutoff]
+        corrections = [r for r in corrections if r.get("ts", 0) <= cutoff]
+    update_cfg(digest_cursor=cutoff)  # --mark advances only this far when the digest was cut
     print(f"# Digest since {time.strftime('%Y-%m-%d %H:%M', time.localtime(since)) if since else 'beginning'}\n")
     print(f"{len(prompts)} prompts, {len(corrections)} flagged corrections\n")
+    if cutoff is not None:
+        print(f"({hidden} newer records not shown — they stay pending for the next /lifecycle-guard:learn)\n")
     print("## Flagged corrections (highest signal: missed scope / repeated mistakes)\n")
     for r in corrections:
         print(f"- [{project_name(r.get('cwd'))}] {r['prompt'][:800]}")
@@ -450,7 +492,9 @@ def lint_spec(paths):
 
 
 def mark():
-    print("marked" if update_cfg(last_learn_ts=time.time()) else "config.json unreadable: not marked")
+    cursor = cfg().get("digest_cursor")  # the digest was cut: only what it showed counts as learned
+    done = update_cfg(last_learn_ts=cursor or time.time(), digest_cursor=None)
+    print("marked" if done else "config.json unreadable: not marked")
 
 
 def stats():
@@ -530,34 +574,42 @@ def days_since(date_str, now):
 def parse_rules():
     rules = []
     for f in kb_files():
-        in_learned = False
-        for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
-            if line.startswith("#"):
-                in_learned = line.lstrip("#").strip().lower().startswith("learned")
-                continue
-            if not line.lstrip().startswith(("-", "*")):
-                continue
-            m = LEARNED.search(line)
-            stamped = "_(learned" in line
-            if not (m or stamped or in_learned):
-                continue
-            scope = SCOPE.search(line)
-            reviewed = REVIEWED.findall(line)
-            was = [i for m in WAS.findall(line) for i in re.findall(r"[0-9a-f]{8}", m)]
-            text = LEARNED.sub("", REVIEWED.sub("", SCOPE.sub("", WAS.sub("", line))))
-            text = re.sub(r"_\(learned\b[^)]*\)_", "", text)  # unreadable stamp, kept out of the text
-            text = re.sub(r"^\s*[-*]\s*(\[[ x~]\]\s*)?", "", text)
-            text = re.sub(r"\s+", " ", text).strip()
-            rules.append({
-                "id": rule_id(text), "file": str(f.relative_to(DATA)), "line": n, "rule": text,
-                "learned": m.group(1) if m else None,
-                "origin": ((m.group(2) or "").strip() or None) if m else None,
-                "cause": (m.group(3) or "").strip() if m else "",
-                "scope": scope.group(1).strip() if scope else None,
-                "reviewed": max(reviewed) if reviewed else None,
-                "was": was,
-                "malformed": stamped and not m,
-            })
+        rules += parse_lines(f.read_text(encoding="utf-8").split("\n"), str(f.relative_to(DATA)))
+    return rules
+
+
+def parse_lines(lines, rel):
+    """Learned rules in one file's lines (parse_rules for a file; maintain checks an edit with it)."""
+    rules = []
+    in_learned = False
+    for n, line in enumerate(lines, 1):
+        if line.startswith("#"):
+            in_learned = line.lstrip("#").strip().lower().startswith("learned")
+            continue
+        if not line.lstrip().startswith(("-", "*")):
+            continue
+        m = LEARNED.search(line)
+        stamped = "_(learned" in line
+        if not (m or stamped or in_learned):
+            continue
+        scope = SCOPE.search(line)
+        reviewed = REVIEWED.findall(line)
+        was = [i for m in WAS.findall(line) for i in re.findall(r"[0-9a-f]{8}", m)]
+        text = LEARNED.sub("", REVIEWED.sub("", SCOPE.sub("", WAS.sub("", line))))
+        text = re.sub(r"_\(learned\b[^)]*\)_", "", text)  # unreadable stamp, kept out of the text
+        text = re.sub(r"^\s*[-*]\s*(\[[ x~]\]\s*)?", "", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        rules.append({
+            "id": rule_id(text), "file": rel, "line": n, "rule": text,
+            "learned": m.group(1) if m else None,
+            "origin": ((m.group(2) or "").strip() or None) if m else None,
+            "cause": (m.group(3) or "").strip() if m else "",
+            "scope": scope.group(1).strip() if scope else None,
+            "reviewed": max(reviewed) if reviewed else None,
+            "was": was,
+            # a stamp closed with ")" instead of ")_" makes the cause swallow the next stamp
+            "malformed": (stamped and not m) or bool(m and "_(" in (m.group(3) or "")),
+        })
     return rules
 
 
@@ -648,13 +700,25 @@ def usage_summary():
 
 
 def rules_list():
-    cwd = sys.argv[sys.argv.index("--cwd") + 1] if "--cwd" in sys.argv else os.getcwd()
+    cwd = os.path.abspath(flag_value("--cwd") or os.getcwd())
     print(f"# learned rules for project `{project_name(cwd)}` — skip lines marked N/A here")
     for r in parse_rules():
         scope = ""
         if r["scope"]:
             scope = f" [scope: {r['scope']}]" if in_scope(r["scope"], cwd) else f" N/A here (scope: {r['scope']})"
         print(f"{r['id']}  {r['file']}:{r['line']}{scope}  {r['rule'][:160]}")
+
+
+def flag_values(name):
+    """Every token after `name` up to the next flag: `--domains a, b` and `--domains a b` both work."""
+    if name not in sys.argv:
+        return []
+    out = []
+    for tok in sys.argv[sys.argv.index(name) + 1:]:
+        if tok.startswith("--"):
+            break
+        out.append(tok)
+    return out
 
 
 def flag_value(name):
@@ -682,11 +746,13 @@ def context():
     --rules separately (they overlap). Like a tool search with detail levels: rules in the loaded domains
     print in full; core/style rules print as a headline index (full text via --rule ids). --full prints
     every rule in full (the reviewer, whose context is discarded after the review)."""
-    cwd = flag_value("--cwd") or os.getcwd()
+    cwd = os.path.abspath(flag_value("--cwd") or os.getcwd())
     full = "--full" in sys.argv
-    wanted = [d.strip().removesuffix(".md") for d in (flag_value("--domains") or "").split(",") if d.strip()]
+    wanted = [d.removesuffix(".md") for d in re.split(r"[,\s]+", " ".join(flag_values("--domains"))) if d]
     available = sorted(p.stem for p in (DATA / "domains").glob("*.md"))
-    files = [DATA / "core.md", DATA / "style.md"] + [DATA / "domains" / f"{d}.md" for d in wanted if d in available]
+    # the reviewer (--full) loads every domain: the builder's pick is a hint, not a blind spot it inherits
+    load = available if full else [d for d in wanted if d in available]
+    files = [DATA / "core.md", DATA / "style.md"] + [DATA / "domains" / f"{d}.md" for d in load]
     rules = {(r["file"], r["line"]): r for r in parse_rules()}
     out, skipped = [], 0
     for f in files:
@@ -711,7 +777,8 @@ def context():
     if not full:
         print("rules ending in … are headlines: read the full text of every one that touches this feature "
               "with `digest.py --rule <id>,<id>` before writing the spec")
-    print(f"domains available: {', '.join(available) or '(none)'}; loaded: {', '.join(d for d in wanted if d in available) or '(none)'}")
+    print(f"domains available: {', '.join(available) or '(none)'}; loaded: {', '.join(load) or '(none)'}"
+          + (f" (builder named: {', '.join(wanted) or 'none'})" if full else ""))
     for d in wanted:
         if d not in available:
             print(f"no domain file: {d} (create domains/{d}.md if the feature needs one)")
@@ -724,11 +791,13 @@ def rule_lookup():
     if not ids:
         print("usage: digest.py --rule <8-char id>[,<id>…]  (ids come from --context)")
         return
-    found = [r for r in parse_rules() if r["id"] in ids]
+    found = [r for r in parse_rules() if r["id"] in ids or ids & set(r["was"])]
     for r in found:
         scope = f" [scope: {r['scope']}]" if r["scope"] else ""
-        print(f"- [{r['id']}] ({r['file']}){scope} {r['rule']}")
-    for i in sorted(ids - {r["id"] for r in found}):
+        old = sorted(ids & set(r["was"]))
+        was = f" (was {', '.join(old)})" if old else ""
+        print(f"- [{r['id']}]{was} ({r['file']}){scope} {r['rule']}")
+    for i in sorted(ids - ids_of(found)):
         print(f"no rule with id {i} (reworded rules get a new id: rerun --context)")
 
 
@@ -796,21 +865,22 @@ def maintain(now=None):
         lines = original.split("\n")
         for n, line in enumerate(lines):
             for m in reversed(list(LEARNED.finditer(line))):  # every stamp; right to left keeps offsets
-                if m.group(3) and len(m.group(3)) > CAUSE_MAX:
+                c = m.group(3) or ""
+                if len(c) > CAUSE_MAX and "_(" not in c and ")_" not in c:  # else it ran into another stamp
                     short = m.group(3)[:CAUSE_MAX - 2].rsplit(" ", 1)[0].rstrip(",;:—- ") + " …"
                     line = line[:m.start(3)] + short + line[m.end(3):]
                     trimmed.append((rel, m.group(3), short))
             lines[n] = line
         updated = "\n".join(lines)
+        if updated != original and not same_ids(original, updated, rel):
+            trimmed = [t for t in trimmed if t[0] != rel]  # never change a rule's id unattended
+            continue
         if updated != original:
             (DATA / "backups").mkdir(exist_ok=True)
             stamp = time.strftime("%Y%m%d-%H%M", time.localtime(now))
             with open(DATA / "backups" / f"{f.name}.{stamp}-maintain.bak", "w", encoding="utf-8", newline="") as fh:
                 fh.write(original)
-            tmp = f.with_name(f".{f.name}.{os.getpid()}.tmp")
-            with open(tmp, "w", encoding="utf-8", newline="") as fh:
-                fh.write(updated)
-            os.replace(tmp, f)
+            write_atomic(f, updated, newline="")
     if trimmed:
         with open(DATA / "changelog.md", "a", encoding="utf-8") as fh:
             fh.write(f"\n## {time.strftime('%Y-%m-%d', time.localtime(now))} maintain (causes trimmed to "
@@ -824,9 +894,17 @@ def maintain(now=None):
     return {"causes_trimmed": len(trimmed), "too_long": too_long, "over_budget": over}
 
 
+def ids_of(rules):
+    return {i for r in rules for i in [r["id"], *r["was"]]}
+
+
+def same_ids(before, after, rel):
+    return ids_of(parse_lines(before.split("\n"), rel)) == ids_of(parse_lines(after.split("\n"), rel))
+
+
 def known_ids():
     """Every id a rule answers to: its current id and the ids in its `was` stamps."""
-    return {i for r in parse_rules() for i in [r["id"], *r["was"]]}
+    return ids_of(parse_rules())
 
 
 def verify_ids():
@@ -915,8 +993,15 @@ def audit_rules():
     return rules, limit
 
 
+def kb_budget():
+    try:
+        return float(cfg().get("kb_budget_kb", 12))
+    except (TypeError, ValueError):
+        return 12.0  # a hand-edited "12 KB" must not break the hooks
+
+
 def kb_sizes():
-    budget = float(cfg().get("kb_budget_kb", 12))
+    budget = kb_budget()
     return budget, [(str(f.relative_to(DATA)), round(f.stat().st_size / 1024, 1)) for f in kb_files()]
 
 
@@ -966,6 +1051,172 @@ def audit():
             print(f"  cause: {r['cause'][:160]}")
 
 
+
+# --- unattended learning: the model proposes, this code applies -------------------------------------
+# Claude Code refuses an unattended session's writes under ~/.claude, so `/learn auto` runs read-only and
+# ends with a JSON proposal; the SessionEnd wrapper (a plain shell, not a Claude tool) hands it here.
+# Only three operations exist — add, reword, cause — so a drop or merge can't happen unattended.
+KB_TARGET = re.compile(r"^(core\.md|style\.md|domains/[a-z0-9][a-z0-9-]*\.md)$")
+
+
+def _log_error(msg):
+    try:
+        with open(DATA / "hook-errors.log", "a", encoding="utf-8") as fh:
+            fh.write(f"{time.strftime('%Y-%m-%d %H:%M')} {msg}\n")
+    except OSError:
+        pass
+
+
+def _extract_json(text):
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("no JSON object in the proposal")
+    return json.loads(text[start:end + 1])
+
+
+def _insert_learned(lines, new_lines):
+    """Append bullets at the end of the first ## Learned section (create one at the end if missing)."""
+    head = next((i for i, l in enumerate(lines) if l.startswith("#")
+                 and l.lstrip("#").strip().lower().startswith("learned")), None)
+    if head is None:
+        while lines and not lines[-1].strip():
+            lines.pop()
+        return lines + ["", "## Learned"] + new_lines + [""]
+    end = head + 1
+    while end < len(lines) and not lines[end].startswith("#"):
+        end += 1
+    while end > head + 1 and not lines[end - 1].strip():
+        end -= 1
+    return lines[:end] + new_lines + lines[end:]
+
+
+def apply_proposal(path):
+    """Apply a learn proposal {add:[{file,rule,project,cause,scope?}], reword:[{id,rule}], cause:[{id,cause}]}.
+    All or nothing: validated, backed up, every rule id still present afterwards (else nothing is written),
+    originals logged verbatim, then the digest is marked as learned — unless a proposed lesson had to be
+    skipped, so it isn't lost: the run then counts as failed and the material stays pending. Exit code."""
+    try:
+        return _apply_proposal(path)
+    except Exception as e:  # never a traceback into learn.log: refuse cleanly and say why
+        _log_error(f"learn proposal not applied: {e!r}")
+        print(f"not applied: {e!r}")
+        return 1
+
+
+def _ops(prop, key):
+    ops = prop.get(key)
+    return [op for op in (ops if isinstance(ops, list) else []) if isinstance(op, dict)]
+
+
+def _stamp_free(text):
+    return "_(" not in text and ")_" not in text  # no forged _(was …)_ / _(learned …)_ inside a field
+
+
+def _apply_proposal(path):
+    try:
+        prop = _extract_json(Path(path).read_text(encoding="utf-8", errors="ignore"))
+    except Exception as e:
+        _log_error(f"learn proposal not applied: {e!r}")
+        print(f"not applied: {e}")
+        return 1
+    if not isinstance(prop, dict):
+        _log_error("learn proposal not applied: not a JSON object")
+        return 1
+    limit, today = rule_max(), time.strftime("%Y-%m-%d")
+    rules = {r["id"]: r for r in parse_rules()}
+    before = ids_of(rules.values())
+    texts, log, skipped = {}, [], []
+
+    def lines_of(rel):
+        if rel not in texts:
+            f = DATA / rel
+            texts[rel] = f.read_text(encoding="utf-8").split("\n") if f.exists() else \
+                [f"# {Path(rel).stem.replace('-', ' ').title()}", "", "> seeded by Claude — unverified", ""]
+        return texts[rel]
+
+    def clean(t):
+        return re.sub(r"\s+", " ", str(t or "")).strip()
+
+    for op in _ops(prop, "reword"):
+        r, text = rules.get(str(op.get("id"))), clean(op.get("rule"))
+        if not r or not text or len(text) > limit or not _stamp_free(text):
+            skipped.append(f"reword {op.get('id')}: unknown id, empty, over {limit} chars or has a stamp")
+            continue
+        lines = lines_of(r["file"])
+        old = lines[r["line"] - 1]
+        stamps = " ".join(m.group(0) for m in LEARNED.finditer(old))
+        reviewed = " ".join(m.group(0) for m in REVIEWED.finditer(old))
+        scope = f"[scope: {r['scope']}] " if r["scope"] else ""
+        head = re.match(r"^(\s*[-*]\s*(?:\[[ x~]\]\s*)?)", old).group(1)  # keeps indent + checkbox state
+        lines[r["line"] - 1] = " ".join(x for x in (f"{head}{scope}{text}", stamps,
+                                                    f"_(was {', '.join([*r['was'], r['id']])})_", reviewed) if x)
+        log.append(f"- reword {r['file']}: {text[:80]}\n    was: {old}")
+    for op in _ops(prop, "cause"):
+        r, cause = rules.get(str(op.get("id"))), clean(op.get("cause"))[:CAUSE_MAX]
+        if not r or not cause or not _stamp_free(cause):
+            skipped.append(f"cause {op.get('id')}: unknown id or bad text")
+            continue
+        lines = lines_of(r["file"])
+        old = lines[r["line"] - 1]
+        m = LEARNED.search(old)
+        if not m or m.group(3) is None:
+            skipped.append(f"cause {op.get('id')}: no readable stamp")
+            continue
+        lines[r["line"] - 1] = old[:m.start(3)] + cause + old[m.end(3):]
+        log.append(f"- cause {r['file']}: {r['id']} — {cause}\n    was: {m.group(3)}")
+    known = {r["rule"].lower() for r in rules.values()}
+    adds = {}
+    lost_lessons = 0
+    for op in _ops(prop, "add"):
+        rel, text = str(op.get("file") or ""), clean(op.get("rule"))
+        project = re.sub(r"[^\w.-]", "", str(op.get("project") or "?")) or "?"
+        cause = clean(op.get("cause"))[:CAUSE_MAX]
+        scope = re.sub(r"[\[\]]", "", clean(op.get("scope")))
+        if text.lower() in known:
+            skipped.append(f"add {rel}: already a rule")  # nothing lost
+            continue
+        if (not KB_TARGET.match(rel) or not text or len(text) > limit or not _stamp_free(text)
+                or not _stamp_free(cause) or not _stamp_free(scope)):
+            skipped.append(f"add {rel}: bad file, empty, over {limit} chars, or stamp-like text — {text[:80]}")
+            lost_lessons += 1
+            continue
+        known.add(text.lower())
+        line = f"- [ ] {f'[scope: {scope}] ' if scope else ''}{text} _(learned {today} @ {project}: {cause or 'learned'})_"
+        adds.setdefault(rel, []).append(line)
+        log.append(f"- add {rel}: {text[:80]}")
+    for rel, new_lines in adds.items():
+        texts[rel] = _insert_learned(lines_of(rel), new_lines)
+    after = set()
+    for rel in {r["file"] for r in rules.values()} | set(texts):
+        after |= ids_of(parse_lines(texts[rel] if rel in texts else
+                                    (DATA / rel).read_text(encoding="utf-8").split("\n"), rel))
+    lost = before - after
+    if lost:  # never lose a lesson unattended: write nothing
+        _log_error(f"learn proposal not applied: it would lose rule ids {sorted(lost)}")
+        print(f"not applied: would lose {sorted(lost)}")
+        return 1
+    stamp = time.strftime("%Y%m%d-%H%M")
+    (DATA / "backups").mkdir(exist_ok=True)
+    for rel, lines in texts.items():
+        f = DATA / rel
+        if f.exists():
+            shutil.copy2(f, DATA / "backups" / f"{f.name}.{stamp}-learn.bak")
+        f.parent.mkdir(parents=True, exist_ok=True)
+        write_atomic(f, "\n".join(lines))
+    with open(DATA / "changelog.md", "a", encoding="utf-8") as fh:
+        fh.write(f"\n## {today} learn (auto, applied by digest.py)\n" + "\n".join(log or ["- nothing to change"]) + "\n")
+        for s in skipped:
+            fh.write(f"- skipped {s}\n")
+    if skipped:
+        _log_error("learn proposal: skipped " + "; ".join(skipped))
+    if lost_lessons:  # a lesson couldn't be stored: keep its material pending, count the run as failed
+        print(json.dumps({"applied": len(log), "skipped": skipped, "marked": False}))
+        return 1
+    update_cfg(learn_failures=0)  # the background run worked: no backoff
+    mark()
+    print(json.dumps({"applied": len(log), "skipped": skipped, "marked": True}))
+    return 0
+
 if __name__ == "__main__":
     arg = sys.argv[1] if len(sys.argv) > 1 else ""
     if arg == "--lint-spec":
@@ -986,7 +1237,18 @@ if __name__ == "__main__":
     if arg == "--ingest-usage":  # used by the Stop hook; also handy by hand
         print(ingest_usage(sys.argv[2] if len(sys.argv) > 2 else "."))
         sys.exit(0)
-    {"--bootstrap": bootstrap, "--mark": mark, "--stats": stats,
-     "--audit": audit, "--rules": rules_list, "--usage": usage_summary,
-     "--project": project_info, "--context": context, "--rule": rule_lookup,
-     "--lint-rules": lint_rules, "--footprint": footprint}.get(arg, since_last)()
+    if arg == "--apply-proposal":
+        sys.exit(apply_proposal(sys.argv[2] if len(sys.argv) > 2 else ""))
+    if arg == "--version":
+        print(VERSION)
+        sys.exit(0)
+    commands = {"--bootstrap": bootstrap, "--mark": mark, "--stats": stats,
+                "--audit": audit, "--rules": rules_list, "--usage": usage_summary,
+                "--project": project_info, "--context": context, "--rule": rule_lookup,
+                "--lint-rules": lint_rules, "--footprint": footprint}
+    if arg.startswith("--") and arg not in commands:
+        # never fall through to the prompt digest: an agent asking a stale copy for --context must notice
+        print(f"digest.py {VERSION}: unknown flag {arg} — a stale copy? Use the plugin's scripts/digest.py",
+              file=sys.stderr)
+        sys.exit(2)
+    commands.get(arg, since_last)()

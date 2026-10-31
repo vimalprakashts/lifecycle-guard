@@ -88,12 +88,15 @@ def main() -> None:
             return
         return
 
+    # bounded: every blocking feature is always named, but items are shortened and fewer are listed per
+    # feature when several are active (the reason goes into context on every blocked stop)
+    per = 12 if len(blockers) <= 3 else 5
     lines = []
     for path, items in blockers:
         lines.append(f"{path}: {len(items)} open")
-        lines += [f"  - {i}" for i in items[:12]]
-        if len(items) > 12:
-            lines.append(f"  ... and {len(items) - 12} more")
+        lines += [f"  - {i if len(i) <= 120 else i[:117].rstrip() + '…'}" for i in items[:per]]
+        if len(items) > per:
+            lines.append(f"  ... and {len(items) - per} more")
     reason = (
         "[lifecycle-guard] Definition of done not met. Open items:\n" + "\n".join(lines) +
         "\n\nContinue implementing them (code + test), ticking each box when truly done. "

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build release notes for tag $1 (e.g. v1.6.2): the version-bump commit's body, then every commit
+# Build release notes for tag $1 (e.g. v1.6.2): its CHANGELOG.md section (else the bump commit's body), then every commit
 # subject since the previous tag, then the upgrade block. Used by .github/workflows/release.yml.
 set -euo pipefail
 tag="$1"
@@ -10,7 +10,12 @@ bump=$(git log -1 --format=%H -S"\"${tag#v}\"" -- "$plugin_json")
 bump=${bump:-$(git log -1 --format=%H -- "$plugin_json")}
 range=${prev:+$prev..}HEAD
 
-body=$(git log -1 --format=%b "$bump" | { grep -viE '^(co-authored-by|signed-off-by):' || true; } | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
+# the CHANGELOG section for this version is the release body (it covers every commit since the last
+# release); the bump commit's body is the fallback for a version with no section
+body=$(awk -v v="${tag#v}" '$0 ~ "^## "v" " {on=1; next} on && /^## / {exit} on' CHANGELOG.md | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
+if [ -z "$body" ]; then
+  body=$(git log -1 --format=%b "$bump" | { grep -viE '^(co-authored-by|signed-off-by):' || true; } | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
+fi
 if [ -n "$body" ]; then
   printf '%s\n\n' "$body"
 fi

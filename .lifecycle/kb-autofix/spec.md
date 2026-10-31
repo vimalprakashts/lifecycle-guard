@@ -13,7 +13,9 @@ SessionEnd hook (deterministic upkeep + spawns background run), the background `
 1. `digest.maintain()` at every SessionEnd, no model: causes > 80 chars trimmed at a word boundary + " …"
    (backup `*.maintain.bak`, original logged in changelog.md); rule ids/text untouched. Records
    `kb_too_long` (ids) and `kb_over_budget` (files) in config.json.
-2. If `auto_learn` and `kb_too_long` non-empty and `last_compact_ts` older than 24 h → spawn
+2. (Corrected by the v1.12 hardening: the background run is read-only and returns a JSON proposal that
+   `lg-digest.py --apply-proposal` applies — Claude Code blocks unattended writes under ~/.claude.)
+   If `auto_learn` and `kb_too_long` non-empty and `last_compact_ts` older than 24 h → spawn
    `/lifecycle-guard:learn auto` even with nothing new (same lock); set `last_compact_ts` first, so a rule
    the model can't shorten doesn't loop. learn.md: zero new material + lint not ok → compaction run;
    the budget step rewords EVERY too-long rule with `_(was id)_`; never merges or drops unattended.

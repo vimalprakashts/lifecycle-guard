@@ -9,9 +9,9 @@ Run the mandatory independent review for a feature and record the result. Target
 
 2. **Dispatch the critic in a fresh context** — the `lifecycle-reviewer` agent if available, else a fresh general-purpose subagent using `references/review.md`. Pass it the spec/tasks paths, the changed files (paths/diff, NOT the whole repo — token discipline) and the checklist domains (the `domains:` line in `tasks.md`; else pick them from the spec). It returns `VERDICT: PASS|FAIL` + ranked findings across actor coverage, **CTA/deep-link coverage**, action closure, **interactivity**, state visibility, failure/edge cases, security/tenancy, CRUD parity, `## Learned` rules, and tests.
 
-3. **Fix** every critical/high finding (and cheap mediums) — unless the user only asked whether the feature is done: then report the findings, most severe first, with a verdict, and offer to fix them instead of editing. Where a fix is a reusable lesson, also apply "Learning in the moment" (append the rule to the right checklist).
+3. **Fix** every critical/high finding and every finding that opens a hard gate (whatever its severity), plus cheap mediums — unless the user only asked whether the feature is done: then report the findings, most severe first, with a verdict, and offer to fix them instead of editing. Where a fix is a reusable lesson, also apply "Learning in the moment" (append the rule to the right checklist).
 
-4. **Round 2 only if round 1 had critical/high findings you fixed**, scoped: pass the round-1 findings, the fix for each and the files touched since; the critic confirms them and checks for regressions. No round 2 after a PASS, after medium/low-only findings, or when you only reported findings without fixing. Never a third round (token cap).
+4. **Round 2 if round 1 returned FAIL or you changed code for any finding**, scoped: pass the round-1 findings, the fix for each and the files touched since; the critic confirms them and checks for regressions. Skip it only when round 1 was PASS and you changed nothing (or only reported findings). Never a third round (token cap).
 
 5. **Write the committed artifact** `.lifecycle/<slug>/review.md` (format also in the skill's `references/spec-template.md`; keep the two identical):
    ```
@@ -27,6 +27,6 @@ Run the mandatory independent review for a feature and record the result. Target
    - <id> satisfied
    ```
    Copy the critic's RULES APPLIED list (merge both rounds: a rule that caught something in round 1 stays `caught`). The Stop hook records it in `~/.claude/lifecycle-guard/usage.jsonl`, which is how `/lifecycle-guard:audit` knows which rules earn their place.
-   If the user intentionally defers the whole review, write `review: deferred — <reason>` instead. The Stop hook requires this artifact (PASS or deferred) before a feature can be `status: done`.
+   `VERDICT` is the critic's last verdict, verbatim — never your own. If the last round is still FAIL, write `review: deferred — <reason>` with the open gaps under Known gaps, and tell the user. If the user intentionally defers the whole review, write `review: deferred — <reason>` instead. The Stop hook requires this artifact (PASS or deferred) before a feature can be `status: done`.
 
 6. Run the test suite + lint and **paste the literal output**; a failing suite means the review is not PASS. Reply with a one-line summary (verdict, rounds, # findings fixed, any deferred).

@@ -27,8 +27,11 @@ keep a hash of the project path to avoid counting a review twice.
   base, that text becomes part of the conversation sent to Anthropic, like any file Claude reads.
 - **Background learning** (`auto_learn`, on by default) starts a headless `claude -p
   /lifecycle-guard:learn auto` run at session end once enough prompts have piled up. That run sends the
-  new prompts and corrections to Anthropic to distill them into rules. The same run, at most once a
-  day, also rewords learned rules longer than `rule_max_chars`, which sends those rules. Trimming long
+  new prompts and corrections (capped at `digest_max_chars`, 20,000 by default) plus your learned rules to
+  Anthropic, and it can only read: it returns proposed rule changes, which the plugin's own local code
+  applies after validating them, with backups and a changelog. It never runs in `claude -p` / Agent SDK
+  sessions, and a run that fails waits a day before trying again. The same run, at most once a day,
+  also rewords learned rules longer than `rule_max_chars`. Trimming long
   `cause` notes at session end happens locally, with no model call. Turn background runs off with
   `"auto_learn": false` in `config.json` and run `/lifecycle-guard:learn` by hand when you choose.
 

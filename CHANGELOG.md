@@ -52,6 +52,22 @@ disclose progressively, and send instructions just in time. Measured on a 61-rul
   updates merge only their keys and never touch an unreadable `config.json` (no background run then);
   stale locks cleared; the same too-long rules retry weekly, not daily; an unattended run snapshots
   every rule id and `--verify-ids` fails if one is lost.
+- **Fix: background learning never actually saved anything.** Claude Code refuses an unattended
+  session's writes under `~/.claude`, so every `/learn auto` run since 1.0 was blocked (and paid for).
+  It now runs read-only and returns a JSON proposal (add / reword / cause — no drop or merge), which
+  `lg-digest.py --apply-proposal` applies: validated, backed up, originals logged verbatim, refused if
+  any rule id would be lost, atomic. A run that doesn't apply backs off (1 day, then 1 week); automated
+  sessions never start one. The /learn digest is capped (`digest_max_chars`) and `--mark` keeps what it
+  didn't show pending.
+- **Hardening from a five-lens review with debate (22 confirmed findings):** the reviewer's `--full`
+  loads every domain, not only the builder's pick; round 2 runs after any FAIL or any fix, and
+  `review.md` carries the critic's verdict verbatim (still FAIL → `review: deferred` with the gaps);
+  `--domains a, b` / `a b` work; `--rule` resolves former ids; relative `--cwd` works; `/tmp` is never
+  treated as a tool's temp dir (Linux); commands use `bin/lg-digest.py`, never downgraded by an older
+  plugin in another session; unknown flags fail loudly; maintain never trims a mis-closed stamp or
+  changes an id, keeps symlinks and file modes; a bad `kb_budget_kb` can't silence hook notes; hook
+  notes show `~` paths and never stack; the Stop reason is bounded; the seed's two long rules are
+  shortened (a fresh install no longer starts a background run); release notes come from this file.
 - **Budget guard:** `tests/test_budget.py` caps every tier (always-on text, hook notes, SKILL, template,
   fallback prompt, builder load on a 60-rule fixture). CI fails on growth past a budget.
 

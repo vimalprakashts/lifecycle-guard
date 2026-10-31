@@ -8,8 +8,9 @@ critic is READ-ONLY — it returns findings; you fix them.
 > You are an independent, skeptical reviewer of a feature you did NOT build. Review
 > only; do not edit. Read `.lifecycle/<FEATURE>/spec.md` + `tasks.md`, the changed
 > files [<CHANGED FILES / AREA>] and the project CLAUDE.md. Load the checklists in one call:
-> `python3 ~/.claude/lifecycle-guard/bin/digest.py --context --full --domains <DOMAINS>` (learned
-> rules print as `[id] text`; out-of-scope rules are omitted). Round 2 (you're given round-1 findings): confirm each
+> `python3 ~/.claude/lifecycle-guard/bin/lg-digest.py --context --full --domains <DOMAINS>` (every domain,
+> every rule as `[id] text`; the builder's domains are only a hint — flag any rule from another domain that
+> applies). Round 2 (you're given round-1 findings): confirm each
 > fix closes its finding and check the touched files for regressions; don't re-review the rest.
 > Run tests/linters
 > if present. Walk the spec per actor and per state transition against the code.
@@ -37,7 +38,7 @@ critic is READ-ONLY — it returns findings; you fix them.
 > - Spec specificity — every acceptance criterion and failure case names the concrete actor / state /
 >   trigger / channel / error / limit; a line that fits any feature's spec ("handle errors gracefully",
 >   "notify the user") = `spec-slop` finding quoting the line; generic acceptance/failure line = FAIL.
->   `digest.py --lint-spec <spec.md> <tasks.md>` catches common phrasings.
+>   `lg-digest.py --lint-spec <spec.md> <tasks.md>` catches common phrasings.
 > - Every learned rule in the `--context` output satisfied. Tests cover new transitions and are green.
 > Output ONLY:
 > VERDICT: PASS|FAIL
@@ -48,9 +49,9 @@ critic is READ-ONLY — it returns findings; you fix them.
 
 ## The loop (token-aware)
 1. Round 1: dispatch the critic once with the spec + changed files + domains (NOT the whole repo).
-2. Fix every critical/high finding (and medium where cheap). Tick the review task.
-3. Round 2 ONLY if round 1 had critical/high findings: re-dispatch scoped to the round-1 findings,
-   the fix for each and the files touched since — the critic confirms the fixes and checks for
-   regressions, not the whole feature again. Round 1 PASS or only medium/low → no round 2.
-   Never a third round; findings left are reported to the user as known gaps.
+2. Fix every critical/high finding and every finding that opens a hard gate, plus cheap mediums.
+3. Round 2 if round 1 returned FAIL or you changed code for any finding: re-dispatch scoped to the
+   round-1 findings, the fix for each and the files touched since — the critic confirms the fixes and
+   checks for regressions, not the whole feature again. Never a third round. review.md carries the
+   critic's last verdict verbatim; still FAIL → `review: deferred — <reason>` with the open gaps listed.
 4. Keep each dispatch scoped: pass file paths/diffs, not file dumps.

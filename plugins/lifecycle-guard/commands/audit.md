@@ -8,7 +8,7 @@ Review the lifecycle-guard knowledge base in `~/.claude/lifecycle-guard/`. Learn
 
 This command is interactive. If you are running headless (`LG_HEADLESS=1`, or `claude -p` with nobody to answer), print the step-1 report and stop: never edit rules unattended.
 
-1. Run `python3 ~/.claude/lifecycle-guard/bin/digest.py --audit` (if that copy doesn't know `--audit` yet, the plugin was just updated: run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/digest.py" --audit` instead). The rule format is
+1. Run `python3 ~/.claude/lifecycle-guard/bin/lg-digest.py --audit` (if that copy doesn't know `--audit` yet, the plugin was just updated: run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/digest.py" --audit` instead). The rule format is
    `- [ ] [scope: <project>] <rule> _(learned YYYY-MM-DD @ <project>: <cause>)_ _(reviewed YYYY-MM-DD)_`
    (`[scope: …]` and `_(reviewed …)_` are optional). Flags:
    - **no-origin** — learned before provenance existed (or added by hand without a stamp); the project it came from is unknown.
@@ -43,4 +43,4 @@ This command is interactive. If you are running headless (`LG_HEADLESS=1`, or `c
 
 6. Append to `changelog.md`: `## <today> audit`, then one line per decision: `<keep|scope|reword|merge|drop|origin> <file>: <rule, first 80 chars> — <reason>`. For **drop**, **merge** and **reword**, log the full original line verbatim (for a merge, both lines — the merged one and the kept one if it was edited) (indented under the entry) so it can be restored without digging through backups.
 
-7. Re-run `digest.py --audit` and reply with a compact summary: N kept, N scoped, N reworded, N merged, N dropped, N origins set, the new file sizes, and N still flagged.
+7. Re-run `lg-digest.py --audit` and reply with a compact summary: N kept, N scoped, N reworded, N merged, N dropped, N origins set, the new file sizes, and N still flagged.

@@ -9,11 +9,12 @@ All learned data lives OUTSIDE the plugin so it survives plugin updates:
     corrections.jsonl  prompts that look like "you missed X" (raw material for gaps)
     changelog.md       every change /learn made (audit + revert reference)
     backups/           file snapshots before each learn
-    bin/digest.py      copied here so commands can call a fixed path
+    bin/lg-digest.py   copied here so commands can call a fixed path (never downgraded)
     config.json        thresholds + last learn timestamp
 """
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -100,14 +101,30 @@ def ensure_data_dir() -> None:
         for f in seed_domains.glob("*.md"):
             if not (DATA / "domains" / f.name).exists():
                 shutil.copy(f, DATA / "domains" / f.name)
-    # always refresh the digest script so plugin updates propagate
+    # refresh the digest script so plugin updates propagate. Commands and agents use bin/lg-digest.py:
+    # older plugin versions (still running in other sessions) rewrite bin/digest.py on every prompt, so
+    # that name can't be trusted, and lg-digest.py is never replaced by an older copy.
     src = PLUGIN_ROOT / "scripts" / "digest.py"
     if src.exists():
-        shutil.copy(src, DATA / "bin" / "digest.py")
+        shutil.copy(src, DATA / "bin" / "digest.py")  # what older commands call
+        dst = DATA / "bin" / "lg-digest.py"
+        if not dst.exists() or script_version(dst) <= script_version(src):
+            tmp = dst.with_name(f".{dst.name}.{os.getpid()}.tmp")
+            shutil.copy(src, tmp)
+            os.replace(tmp, dst)  # atomic: a crash mid-copy can't leave a truncated script behind
     if not (DATA / "changelog.md").exists():
         (DATA / "changelog.md").write_text("# lifecycle-guard changelog\n\n")
     if not (DATA / "config.json").exists():
         save_config(DEFAULT_CONFIG)
+
+
+def script_version(path) -> tuple:
+    """VERSION = "x.y.z" in a digest.py copy; (0,) when it has none (anything before 1.12.0)."""
+    try:
+        m = re.search(r'^VERSION = "(\d+(?:\.\d+)*)"', Path(path).read_text(encoding="utf-8"), re.M)
+        return tuple(int(x) for x in m.group(1).split(".")) if m else (0,)
+    except OSError:
+        return (0,)
 
 
 def load_config() -> dict:
@@ -120,10 +137,19 @@ def load_config() -> dict:
 
 def save_config(cfg: dict) -> None:
     DATA.mkdir(parents=True, exist_ok=True)
-    p = DATA / "config.json"
-    tmp = p.with_name(f".config.json.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(cfg, indent=2))
-    os.replace(tmp, p)  # atomic: a concurrent reader never sees half a file
+    real = Path(os.path.realpath(DATA / "config.json"))  # a symlinked config stays a symlink
+    tmp = real.with_name(f".{real.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(json.dumps(cfg, indent=2))
+        if real.exists():
+            try:
+                shutil.copymode(real, tmp)  # keep e.g. 600
+            except OSError:
+                pass
+        os.replace(tmp, real)  # atomic: a concurrent reader never sees half a file
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def update_config(**changes) -> bool:

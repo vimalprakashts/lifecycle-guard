@@ -224,7 +224,7 @@ class AutomatedSessions(unittest.TestCase):
         proj.mkdir(parents=True)
         (proj / "sdk1.jsonl").write_text(json.dumps({"type": "user", "entrypoint": "sdk-ts"}) + "\n")
         (proj / "cli1.jsonl").write_text(json.dumps({"type": "user", "entrypoint": "cli"}) + "\n")
-        temp = os.path.realpath(tempfile.gettempdir())
+        temp = "/var/folders/xy/abc123/T"  # macOS per-user temp, on any host (Linux's /tmp is not one)
         recs = [{"prompt": "you missed the tile link", "cwd": "/x/app", "session": "sdk1", "ts": now},
                 {"prompt": "you missed the export", "cwd": "/x/app", "session": "cli1", "ts": now},
                 {"prompt": "you missed X", "cwd": f"{temp}/remember-summarizer-cwd-ab", "session": "gone", "ts": now},

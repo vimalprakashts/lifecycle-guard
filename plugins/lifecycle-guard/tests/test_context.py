@@ -121,7 +121,8 @@ class Prose(unittest.TestCase):
         self.assertIn("--context --domains", text)
         self.assertIn("references/spec-template.md", text)
         self.assertTrue((SKILL / "references" / "spec-template.md").exists())
-        self.assertIn("Round 2 only if round 1 had critical/high", text)
+        self.assertIn("Round 2 if round 1 returned FAIL or you changed code", text)
+        self.assertIn("LAST verdict verbatim", text)
 
     def test_reviewers_load_context_not_kb_files(self):
         for p in (ROOT / "agents" / "lifecycle-reviewer.md", SKILL / "references" / "review.md"):
@@ -129,7 +130,9 @@ class Prose(unittest.TestCase):
             self.assertIn("--context --full --domains", text, p.name)
             self.assertNotIn("--rules", text, p.name)
             self.assertNotRegex(text, r"\(`?core\.md`?, `?style\.md`?", p.name)
-        self.assertIn("Round 2 only if round 1 had critical/high", (ROOT / "commands" / "review.md").read_text())
+        review = (ROOT / "commands" / "review.md").read_text()
+        self.assertIn("Round 2 if round 1 returned FAIL or you changed code", review)
+        self.assertIn("critic's last verdict, verbatim", review)
 
 
 if __name__ == "__main__":

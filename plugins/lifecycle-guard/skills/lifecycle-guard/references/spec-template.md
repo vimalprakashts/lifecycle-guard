@@ -19,7 +19,7 @@ any other feature's spec specifies nothing — "handle errors gracefully", "noti
 security", "all edge cases covered". It reads as covered and is easy to tick while the work is half
 done. Rewrite each one to name the concrete actor, state, trigger, channel, error or limit ("gateway
 timeout → order stays `pending_payment`; retry job after 5 min; customer sees 'payment pending'").
-Run `python3 ~/.claude/lifecycle-guard/bin/digest.py --lint-spec .lifecycle/<slug>/spec.md
+Run `python3 ~/.claude/lifecycle-guard/bin/lg-digest.py --lint-spec .lifecycle/<slug>/spec.md
 .lifecycle/<slug>/tasks.md` to catch the common phrasings; the reviewer checks the rest.
 
 ## `.lifecycle/<feature-slug>/tasks.md`
@@ -52,6 +52,8 @@ enforces that the review actually happened before "done". The `domains:` line te
 which checklists to load.
 
 ## `.lifecycle/<feature-slug>/review.md`
+
+`VERDICT` is the critic's last verdict, verbatim. Still FAIL after round 2 → `review: deferred — <reason>` and list the open gaps.
 
 ```
 # Review — <slug>

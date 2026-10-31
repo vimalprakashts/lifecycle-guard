@@ -27,7 +27,8 @@ runs /audit, /lg-status), /learn (auto + interactive), the correction hook, CI (
 - review.md format moved into references/spec-template.md (SKILL pointed at a command file before).
 
 ## Failure / edge cases
-- Builder skips fetching a relevant headline → the reviewer has every rule in full (`--full`) and FAILs
+- Builder skips fetching a relevant headline → the reviewer loads EVERY rule of EVERY domain in full
+  (`--full`, the builder's domains are only a hint — corrected by the v1.12 hardening review) and FAILs
   the learned-rule gate; the miss is caught at review, not lost.
 - A rule ≤ 120 chars prints whole (no "…"), so short rules never need a fetch.
 - A reworded rule changes id → `--rule` says so and points to rerunning `--context`.

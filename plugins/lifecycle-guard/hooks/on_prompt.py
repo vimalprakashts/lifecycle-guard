@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import time
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
 from lg_common import (CORRECTION, DATA, append_jsonl, clean_prompt,  # noqa: E402
@@ -61,35 +62,42 @@ def main() -> None:
            "entrypoint": entrypoint}
     append_jsonl("prompts.jsonl", rec)
 
+    kb = str(DATA).replace(str(Path.home()), "~", 1)  # shorter, and the same size for every user
     notes = []
     if CORRECTION.search(prompt):
         append_jsonl("corrections.jsonl", rec)
         project = project_of(rec["cwd"])
         notes.append(
             "[lifecycle-guard] Looks like a correction. After fixing it, add the item to the active "
-            ".lifecycle/*/tasks.md and record ONE rule under '## Learned' in "
-            f"{DATA}/domains/<domain>.md (core.md if it applies to every feature, style.md if it's a "
-            f"convention): '- [ ] <rule> _(learned YYYY-MM-DD @ {project}: <cause>)_'. The rule: portable (no "
-            "project names), at most 250 chars, leading with the situation and the check (its first 100 chars "
-            f"are its headline). Prefix '[scope: {project}]' if it only holds here. Strengthen an existing "
-            "rule rather than duplicate. One silent edit; mention it in one line."
+            f".lifecycle/*/tasks.md and record ONE rule under '## Learned' in {kb}/domains/<domain>.md "
+            "(core.md if it applies to every feature, style.md if a convention): "
+            f"'- [ ] <rule> _(learned YYYY-MM-DD @ {project}: <cause>)_'. Portable (no project names), at most "
+            "250 chars, situation and check first. "
+            f"Prefix '[scope: {project}]' if it only holds here. Strengthen an existing rule rather than "
+            "duplicate it; if you reword it, append '_(was <its old id>)_'. One silent edit; mention it in a line."
         )
     elif cfg.get("feature_nudge") and FEATURE.search(prompt) and len(prompt.split()) >= 4:
         notes.append(
             "[lifecycle-guard] This looks like a feature request. Use the lifecycle-guard skill: load the "
-            f"checklists in one call (python3 {DATA}/bin/digest.py --context --domains <relevant ones from "
-            f"{DATA}/domains/>), write "
+            f"checklists in one call (python3 {kb}/bin/lg-digest.py --context --domains <relevant ones from "
+            f"{kb}/domains/>), write "
             ".lifecycle/<feature-slug>/spec.md + tasks.md covering every actor, state, failure path and "
             "cross-cutting concern BEFORE writing code. Skip only if the request is a trivial tweak."
         )
 
-    # the one budget fix that needs a person: merging rules in an over-budget file (SessionEnd records it)
-    if cfg.get("kb_over_budget") and time.time() - cfg.get("last_budget_nudge_ts", 0) > NUDGE_EVERY:
-        over = over_budget_now()  # re-check: an /audit since SessionEnd may have fixed it
-        if over and update_config(last_budget_nudge_ts=time.time()):
-            notes.append(f"[lifecycle-guard] {', '.join(over)} is over its size budget, which costs context on "
-                         "every feature. At a natural pause, suggest the user run /lifecycle-guard:audit to merge "
-                         "rules.")
+    # the one budget fix that needs a person: merging rules in an over-budget file (SessionEnd records it).
+    # Optional and alone: it waits for a prompt with no other note, and can never suppress one.
+    try:
+        if (not notes and cfg.get("kb_over_budget")
+                and time.time() - cfg.get("last_budget_nudge_ts", 0) > NUDGE_EVERY):
+            over = over_budget_now()  # re-check: an /audit since SessionEnd may have fixed it
+            if over and update_config(last_budget_nudge_ts=time.time()):
+                names = ", ".join(over[:3]) + (f" and {len(over) - 3} more" if len(over) > 3 else "")
+                notes.append(f"[lifecycle-guard] {names} over its size budget, which costs context on every "
+                             "feature. At a natural pause, suggest the user run /lifecycle-guard:audit to "
+                             "merge rules.")
+    except Exception:
+        pass
 
     if notes:
         emit("\n\n".join(notes))

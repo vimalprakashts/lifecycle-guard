@@ -76,6 +76,8 @@ tests/test_maintenance.py         stdlib unittest: project identity + nested sco
 tests/test_spec_lint.py           stdlib unittest: --lint-spec flags generic requirement lines only
 tests/test_context.py             stdlib unittest: --context load (scope omit, ids = --rules, flags) + prose pointers
 tests/test_budget.py              stdlib unittest: CONTEXT BUDGET — caps every tier of text the plugin puts in context
+tests/test_autofix.py             stdlib unittest: automatic KB upkeep (maintain, throttled background run, reminder, safety)
+tests/test_hardening.py           stdlib unittest: one regression test per finding of the v1.12 five-lens review
 tests/test_manifest.py            stdlib unittest: manifests, frontmatter, hook wiring, SHA pins, CHANGELOG=version
 evals/                            behavioural golden set for `claude plugin eval` (fixture shop + 9 cases);
                                   NOT in CI (paid sessions) — see evals/README.md
@@ -162,9 +164,17 @@ ticking boxes → run critic → fix findings → write `review.md` PASS → `st
   budget upkeep, no model**: trims `cause` stamps over 80 chars (backup + original in changelog; ids
   unchanged) and records `kb_too_long` / `kb_over_budget` in config. Then, if `auto_learn` is on and
   either enough new corrections/prompts accumulated since `last_learn_ts`, or `kb_too_long` is non-empty
-  (at most once a day, `last_compact_ts`), it spawns a
-  **headless** `claude -p /lifecycle-guard:learn auto` run (`LG_HEADLESS=1`, a `.learn.lock`
-  file prevents overlap, output to `learn.log`). It edits only files under the KB.
+  (at most once a day, `last_compact_ts`), it spawns a **read-only** headless `claude -p
+  /lifecycle-guard:learn auto` run (`LG_HEADLESS=1`; a `.learn.lock` older than 2 h is stale; output to
+  `learn.log`). **Claude Code refuses an unattended session's writes under `~/.claude`**, so the run only
+  PROPOSES: its final message is JSON (`add` / `reword` / `cause` — no drop or merge exists), and the
+  wrapper shell runs `lg-digest.py --apply-proposal`, which validates, backs up, logs originals, refuses
+  anything that would lose a rule id, writes atomically and marks the digest. Never in automated
+  (`sdk-*`) sessions. A run that doesn't apply backs off: 24 h, then 7 d after 3 failures
+  (`last_learn_attempt_ts`, `learn_failures`).
+- **`bin/lg-digest.py`** is what commands and agents call: older plugin versions in other sessions
+  rewrite `bin/digest.py` on every prompt, and `lg-digest.py` is never replaced by an older copy
+  (`VERSION` compare). Unknown flags exit 2 instead of falling through to the prompt digest.
 
 `LG_HEADLESS=1` makes hooks no-op so the background learner can't recurse.
 
@@ -247,6 +257,8 @@ Defaults live in `lg_common.DEFAULT_CONFIG`; `config.json` overrides them.
   | `SKILL.md` | per feature, then every later turn | 7,200 B |
   | `references/spec-template.md` / `review.md` | only in the phase that needs it | 4,800 / 4,500 B |
   | `--context` builder load (60-rule fixture, 1 domain) | per feature | 9,000 B |
+  | Stop gate block reason (8 active features × 30 items) | per blocked stop | 6,000 B |
+  | `/learn` digest (`digest_max_chars`) | per learn run | 20,000 chars |
 
   Rules: load an index and fetch detail on demand (`--context` headlines + `--rule`); filter in
   `digest.py`, not in the model; put phase-only detail in `references/`; send instructions just in time
