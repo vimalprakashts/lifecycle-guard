@@ -24,6 +24,7 @@ SKILL_MD = 7200         # loaded when the skill triggers, then re-sent every lat
 SPEC_TEMPLATE = 4800    # read only when writing a full spec
 REVIEW_FALLBACK = 4500  # fallback critic prompt
 BUILDER_CONTEXT = 9000  # --context for one domain on the 60-rule fixture KB below
+SEED_CORE = 6000        # what every new user's core.md starts at (kb_budget_kb is 12 KB)
 USER_ONLY = {"audit", "bootstrap", "lg-status"}  # never auto-invoked: keep their descriptions out of context
 
 
@@ -53,6 +54,14 @@ class PerFeature(unittest.TestCase):
                              (SKILL / "references" / "spec-template.md", SPEC_TEMPLATE),
                              (SKILL / "references" / "review.md", REVIEW_FALLBACK)):
             self.assertLessEqual(len(path.read_bytes()), budget, path.name)
+
+
+class Seed(unittest.TestCase):
+    def test_new_users_start_well_inside_the_budget(self):
+        seed = SKILL / "seed"
+        self.assertLessEqual(len((seed / "core.md").read_bytes()), SEED_CORE)
+        for p in seed.rglob("*.md"):
+            self.assertLessEqual(len(p.read_bytes()), 12 * 1024 // 2, p.name)
 
 
 class Runtime(unittest.TestCase):

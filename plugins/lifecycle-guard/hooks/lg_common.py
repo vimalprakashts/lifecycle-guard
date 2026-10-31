@@ -27,7 +27,7 @@ SEED = PLUGIN_ROOT / "skills" / "lifecycle-guard" / "seed"
 sys.path.append(str(PLUGIN_ROOT / "scripts"))
 try:
     from digest import CORRECTION, clean_prompt, ingest_usage, prune_logs  # noqa: E402,F401
-    from digest import is_automated  # noqa: E402,F401
+    from digest import is_automated, maintain, over_budget_now  # noqa: E402,F401
     from digest import project_name as project_of  # noqa: E402,F401
 except Exception as _err:  # never let a broken digest import take down the Stop gate
     import re as _re
@@ -48,6 +48,12 @@ except Exception as _err:  # never let a broken digest import take down the Stop
 
     def prune_logs(now=None):
         return {}
+
+    def maintain(now=None):
+        return {}
+
+    def over_budget_now():
+        return []
 
     def is_automated(entrypoint):
         try:
@@ -71,6 +77,8 @@ DEFAULT_CONFIG = {
     "kb_budget_kb": 12,            # /audit warns when a knowledge file grows past this size
     "rule_max_chars": 250,         # /learn keeps new rules this short; /audit flags longer ones too-long
     "learn_from_automated": False, # log prompts from `claude -p` / Agent SDK sessions (tools, not you)
+    "last_compact_ts": 0,          # last background reword of too-long rules (at most once a day)
+    "last_budget_nudge_ts": 0,     # last "file over budget, run /audit" reminder (at most once a week)
     "last_learn_ts": 0,
 }
 
@@ -112,7 +120,24 @@ def load_config() -> dict:
 
 def save_config(cfg: dict) -> None:
     DATA.mkdir(parents=True, exist_ok=True)
-    (DATA / "config.json").write_text(json.dumps(cfg, indent=2))
+    p = DATA / "config.json"
+    tmp = p.with_name(f".config.json.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(cfg, indent=2))
+    os.replace(tmp, p)  # atomic: a concurrent reader never sees half a file
+
+
+def update_config(**changes) -> bool:
+    """Merge just these keys into the file's current content (not a stale in-memory copy). A config that
+    exists but doesn't parse is left alone: it's the user's, maybe mid-write by another session."""
+    p = DATA / "config.json"
+    try:
+        current = json.loads(p.read_text()) if p.exists() else {}
+    except Exception:
+        return False
+    if not isinstance(current, dict):
+        return False
+    save_config({**current, **changes})
+    return True
 
 
 def append_jsonl(name: str, record: dict) -> None:
@@ -132,7 +157,7 @@ def count_since(name: str, since: float) -> int:
                 r = json.loads(line)
             except Exception:
                 continue
-            if r.get("ts", 0) <= since:
+            if r.get("ts", 0) <= since or is_automated(r.get("entrypoint")):
                 continue
             # ignore records older versions logged from injected/pasted text
             text = clean_prompt(r.get("prompt"))

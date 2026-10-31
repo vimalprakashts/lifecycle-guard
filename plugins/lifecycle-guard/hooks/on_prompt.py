@@ -11,10 +11,14 @@ import json
 import os
 import re
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(__file__))
 from lg_common import (CORRECTION, DATA, append_jsonl, clean_prompt,  # noqa: E402
-                       ensure_data_dir, headless, is_automated, load_config, project_of, read_hook_input)
+                       ensure_data_dir, headless, is_automated, load_config, over_budget_now, project_of,
+                       read_hook_input, update_config)
+
+NUDGE_EVERY = 7 * 86400  # the over-budget reminder: at most once a week
 
 FEATURE = re.compile(
     r"\b(build|implement|develop|create|add|integrate|design|make|set ?up|wire up)\b"
@@ -78,6 +82,14 @@ def main() -> None:
             ".lifecycle/<feature-slug>/spec.md + tasks.md covering every actor, state, failure path and "
             "cross-cutting concern BEFORE writing code. Skip only if the request is a trivial tweak."
         )
+
+    # the one budget fix that needs a person: merging rules in an over-budget file (SessionEnd records it)
+    if cfg.get("kb_over_budget") and time.time() - cfg.get("last_budget_nudge_ts", 0) > NUDGE_EVERY:
+        over = over_budget_now()  # re-check: an /audit since SessionEnd may have fixed it
+        if over and update_config(last_budget_nudge_ts=time.time()):
+            notes.append(f"[lifecycle-guard] {', '.join(over)} is over its size budget, which costs context on "
+                         "every feature. At a natural pause, suggest the user run /lifecycle-guard:audit to merge "
+                         "rules.")
 
     if notes:
         emit("\n\n".join(notes))

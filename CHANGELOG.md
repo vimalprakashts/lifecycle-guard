@@ -39,6 +39,19 @@ disclose progressively, and send instructions just in time. Measured on a 61-rul
 - Applied to a real 61-rule KB with `/audit`: 28 rules reworded to ≤ 250 chars and 36 causes shortened,
   nothing dropped, all 46 catches kept. Rule text 15.4 → 10.2 KB, `core.md` 15.6 → 11.9 KB (under its
   12 KB budget), audit flags 28 → 0, reviewer load 28.9 → 24.0 KB, builder (2 domains) 15.8 → 15.0 KB.
+- **Automatic, for every user (no manual `/audit` needed to stay in budget):**
+  1. Every session end, without a model: long `cause` stamps are trimmed (backup + original logged; ids
+     unchanged), and too-long rules / over-budget files are recorded.
+  2. Too-long rules — learned in the moment, or left from older versions — trigger a background
+     `/learn auto` reword (non-destructive, `was` stamp keeps history), at most once a day, even with
+     nothing new to learn. Requires `auto_learn` (on by default).
+  3. A file still over budget needs merges, which are never made unattended: the prompt hook reminds the
+     user to run `/lifecycle-guard:audit`, at most once a week.
+  Upgrading users get their existing knowledge base cleaned the same way. Seed files are capped in CI.
+  Safe unattended: no file edits while a background `/learn` holds its lock; atomic writes; config
+  updates merge only their keys and never touch an unreadable `config.json` (no background run then);
+  stale locks cleared; the same too-long rules retry weekly, not daily; an unattended run snapshots
+  every rule id and `--verify-ids` fails if one is lost.
 - **Budget guard:** `tests/test_budget.py` caps every tier (always-on text, hook notes, SKILL, template,
   fallback prompt, builder load on a 60-rule fixture). CI fails on growth past a budget.
 

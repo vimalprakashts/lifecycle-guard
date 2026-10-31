@@ -19,6 +19,10 @@
   digest.py --rule ID[,ID]  full text of those rules
   digest.py --lint-rules    rules over rule_max_chars, files over kb_budget_kb (write-time budget)
   digest.py --footprint     what a feature costs in context with this knowledge base
+  digest.py --maintain      automatic upkeep (SessionEnd): trim long causes; record too-long rules and
+                            over-budget files in config.json for the hooks
+  digest.py --ids / --verify-ids SNAPSHOT
+                            snapshot every rule id, then check none was lost (unattended-edit guard)
   digest.py --lint-spec FILE...
                        flag spec/task lines that could be pasted into any feature's spec unchanged
                        ("handle errors gracefully") — advisory; the reviewer judges
@@ -110,8 +114,29 @@ def cfg():
         return {}
 
 
+def write_atomic(path, text):
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)  # readers never see a half-written file
+
+
 def save_cfg(c):
-    (DATA / "config.json").write_text(json.dumps(c, indent=2))
+    write_atomic(DATA / "config.json", json.dumps(c, indent=2))
+
+
+def update_cfg(**changes):
+    """Merge keys into config.json. A config that exists but doesn't parse is the user's (maybe mid-write
+    by another session): leave it alone rather than replace it with just these keys."""
+    p = DATA / "config.json"
+    try:
+        current = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except Exception:
+        return False
+    if not isinstance(current, dict):
+        return False
+    current.update(changes)
+    save_cfg(current)
+    return True
 
 
 def read_jsonl(path, since=0.0):
@@ -425,10 +450,7 @@ def lint_spec(paths):
 
 
 def mark():
-    c = cfg()
-    c["last_learn_ts"] = time.time()
-    save_cfg(c)
-    print("marked")
+    print("marked" if update_cfg(last_learn_ts=time.time()) else "config.json unreadable: not marked")
 
 
 def stats():
@@ -741,6 +763,86 @@ def lint_rules():
         print(f"ok: every rule ≤ {limit} chars, every file ≤ {budget:g} KB")
 
 
+LOCK_STALE = 2 * 3600  # a .learn.lock older than this is left over from a crashed run
+
+
+def learn_locked(now=None):
+    """True while a background /learn may be editing the KB files."""
+    lock = DATA / ".learn.lock"
+    try:
+        return (now or time.time()) - lock.stat().st_mtime < LOCK_STALE
+    except OSError:
+        return False
+
+
+def over_budget_now():
+    budget, sizes = kb_sizes()
+    return [n for n, kb in sizes if kb > budget]
+
+
+def maintain(now=None):
+    """Automatic KB upkeep, no model call (SessionEnd runs it every session):
+    - trims `cause` stamps over CAUSE_MAX at a word boundary (provenance only: ids and rules unchanged),
+      backing the file up and logging each original to changelog.md — skipped while a background /learn
+      holds the lock, so it never overwrites that run's edits;
+    - records what only a model or a person can fix: rules over rule_max_chars (the hook then starts a
+      background reword) and files over kb_budget_kb (the prompt hook reminds the user to /audit)."""
+    now = now or time.time()
+    trimmed = []
+    for f in ([] if learn_locked(now) else kb_files()):
+        rel = str(f.relative_to(DATA))
+        with open(f, encoding="utf-8", newline="") as fh:  # keep the user's line endings
+            original = fh.read()
+        lines = original.split("\n")
+        for n, line in enumerate(lines):
+            for m in reversed(list(LEARNED.finditer(line))):  # every stamp; right to left keeps offsets
+                if m.group(3) and len(m.group(3)) > CAUSE_MAX:
+                    short = m.group(3)[:CAUSE_MAX - 2].rsplit(" ", 1)[0].rstrip(",;:—- ") + " …"
+                    line = line[:m.start(3)] + short + line[m.end(3):]
+                    trimmed.append((rel, m.group(3), short))
+            lines[n] = line
+        updated = "\n".join(lines)
+        if updated != original:
+            (DATA / "backups").mkdir(exist_ok=True)
+            stamp = time.strftime("%Y%m%d-%H%M", time.localtime(now))
+            with open(DATA / "backups" / f"{f.name}.{stamp}-maintain.bak", "w", encoding="utf-8", newline="") as fh:
+                fh.write(original)
+            tmp = f.with_name(f".{f.name}.{os.getpid()}.tmp")
+            with open(tmp, "w", encoding="utf-8", newline="") as fh:
+                fh.write(updated)
+            os.replace(tmp, f)
+    if trimmed:
+        with open(DATA / "changelog.md", "a", encoding="utf-8") as fh:
+            fh.write(f"\n## {time.strftime('%Y-%m-%d', time.localtime(now))} maintain (causes trimmed to "
+                     f"{CAUSE_MAX} chars; rules unchanged)\n")
+            for rel, old, short in trimmed:
+                fh.write(f"- cause {rel}: {short}\n    was: {old}\n")
+    limit = rule_max()
+    too_long = sorted(r["id"] for r in parse_rules() if len(r["rule"]) > limit)
+    over = over_budget_now()
+    update_cfg(kb_too_long=too_long, kb_over_budget=over)
+    return {"causes_trimmed": len(trimmed), "too_long": too_long, "over_budget": over}
+
+
+def known_ids():
+    """Every id a rule answers to: its current id and the ids in its `was` stamps."""
+    return {i for r in parse_rules() for i in [r["id"], *r["was"]]}
+
+
+def verify_ids():
+    """Guard for unattended edits: every id listed in FILE (a --ids snapshot) must still exist, as a rule
+    or in a `was` stamp. Exit 1 and name the missing ones otherwise (the caller restores its backup)."""
+    path = Path(sys.argv[2]) if len(sys.argv) > 2 else None
+    if not path or not path.exists():
+        print("usage: digest.py --verify-ids <snapshot from --ids>")
+        sys.exit(2)
+    missing = sorted(set(re.findall(r"\b[0-9a-f]{8}\b", path.read_text())) - known_ids())
+    if missing:
+        print("missing: " + " ".join(missing) + " — a rule was dropped or reworded without `_(was <id>)_`")
+        sys.exit(1)
+    print("ok: every rule id is still present")
+
+
 def footprint():
     """What a feature costs in context with this knowledge base (builder vs reviewer load)."""
     def run(*extra):
@@ -868,6 +970,15 @@ if __name__ == "__main__":
     arg = sys.argv[1] if len(sys.argv) > 1 else ""
     if arg == "--lint-spec":
         lint_spec(sys.argv[2:])
+        sys.exit(0)
+    if arg == "--ids":
+        print("\n".join(sorted(known_ids())))
+        sys.exit(0)
+    if arg == "--verify-ids":
+        verify_ids()
+        sys.exit(0)
+    if arg == "--maintain":
+        print(json.dumps(maintain()))
         sys.exit(0)
     if arg == "--prune-logs":
         print(json.dumps(prune_logs()))

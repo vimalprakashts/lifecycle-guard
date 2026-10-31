@@ -171,6 +171,10 @@ Full details, including what's stored, for how long, what leaves your machine an
 - **Automated sessions are not learned from.** Prompts in `claude -p` and Agent SDK sessions are written
   by tools and other plugins, so they're skipped. If you type into an app built on the Agent SDK and
   learning seems to have stopped, set `learn_from_automated: true` in `config.json`.
+- **The knowledge base keeps itself in budget.** At session end the plugin trims overlong notes (no model
+  call) and, at most once a day, rewords rules over 250 characters in a background run (backed up, logged,
+  usage history kept). It never deletes or merges rules on its own: if a file stays over budget, it reminds
+  you weekly to run `/lifecycle-guard:audit`.
 - **Auto-learn uses tokens.** With `auto_learn: true`, a background `claude -p` run fires at session end once the thresholds are met — that's a real (small) model call. Set `"auto_learn": false` to turn it off and run `/lifecycle-guard:learn` by hand instead.
 
 ---

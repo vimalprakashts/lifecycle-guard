@@ -147,7 +147,9 @@ ticking boxes → run critic → fix findings → write `review.md` PASS → `st
 
 ## Hooks — exact behavior
 
-- **UserPromptSubmit → `on_prompt.py`** (never blocks): skips automated sessions entirely
+- **UserPromptSubmit → `on_prompt.py`** (never blocks): when `kb_over_budget` is set, adds a one-line
+  "/audit to merge rules" reminder at most once a week (merging is the one budget fix that needs a
+  person). Skips automated sessions entirely
   (`CLAUDE_CODE_ENTRYPOINT=sdk-*`, i.e. `claude -p` / Agent SDK — tools, not the user; `digest.is_automated`,
   opt in with `learn_from_automated`); otherwise appends the prompt (with its entrypoint) to
   `prompts.jsonl`; if it matches the CORRECTION regex ("you missed / forgot / where is the /
@@ -156,8 +158,11 @@ ticking boxes → run critic → fix findings → write `review.md` PASS → `st
   to run the lifecycle workflow. Gated by `feature_nudge`.
 - **Stop → `on_stop.py`**: first ingests rule usage from `.lifecycle/*/review.md` (fail-safe), then the gate described above. Guards against infinite loops via
   `stop_hook_active`; respects `stop_gate` config; only fires on active features.
-- **SessionEnd → `on_session_end.py`**: if `auto_learn` is on and enough new
-  corrections/prompts accumulated since `last_learn_ts` (thresholds in config), spawns a
+- **SessionEnd → `on_session_end.py`**: prunes old logs, then runs `digest.maintain()` — **automatic KB
+  budget upkeep, no model**: trims `cause` stamps over 80 chars (backup + original in changelog; ids
+  unchanged) and records `kb_too_long` / `kb_over_budget` in config. Then, if `auto_learn` is on and
+  either enough new corrections/prompts accumulated since `last_learn_ts`, or `kb_too_long` is non-empty
+  (at most once a day, `last_compact_ts`), it spawns a
   **headless** `claude -p /lifecycle-guard:learn auto` run (`LG_HEADLESS=1`, a `.learn.lock`
   file prevents overlap, output to `learn.log`). It edits only files under the KB.
 
