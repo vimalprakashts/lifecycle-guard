@@ -110,6 +110,9 @@ class Runtime(unittest.TestCase):
             f.write("- [ ] " + "x " * 200 + "_(learned 2026-01-01 @ shop: c)_\n")
         out = self.run_py("scripts/digest.py", "--lint-rules")
         self.assertIn("too-long", out)
+        with open(self.data / "core.md", "a") as f:
+            f.write("- [ ] short rule _(learned 2026-01-01 @ shop: " + "a very long story " * 8 + ")_\n")
+        self.assertIn("long-cause", self.run_py("scripts/digest.py", "--lint-rules"))
         self.assertIn("too-long: 1", self.run_py("scripts/digest.py", "--audit"))
         self.assertIn("context per feature: builder", self.run_py("scripts/digest.py", "--footprint"))
 

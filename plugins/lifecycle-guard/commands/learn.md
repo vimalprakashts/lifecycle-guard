@@ -26,7 +26,7 @@ Update the lifecycle-guard knowledge base in `~/.claude/lifecycle-guard/` from n
 
 6. Before editing any file, copy it to `backups/<filename>.<YYYYMMDD-HHMM>.bak`.
 
-7. **Budget check (write-time):** run `python3 ~/.claude/lifecycle-guard/bin/digest.py --lint-rules`. Shorten any rule you added or changed in this run that is `too-long`. If a file is `over-budget`: interactively, propose merges of overlapping rules in it and apply the ones the user accepts; in `auto` mode, never merge or drop existing rules unattended — list the file in your summary and suggest `/lifecycle-guard:audit`.
+7. **Budget check (write-time):** run `python3 ~/.claude/lifecycle-guard/bin/digest.py --lint-rules`. Shorten any rule you added or changed in this run that is `too-long`, and any cause flagged `long-cause`. If a file is `over-budget`: interactively, propose merges of overlapping rules in it and apply the ones the user accepts; in `auto` mode, never merge or drop existing rules unattended — list the file in your summary and suggest `/lifecycle-guard:audit`.
 
 8. Append to `changelog.md`: date, mode, and one line per rule added, changed or removed (after any shortening in step 7), with the file it went into.
 

@@ -451,6 +451,8 @@ def stats():
 LEARNED = re.compile(r"_\(learned\s+(\d{4}-\d{2}-\d{2})(?:\s*@\s*(.+?))?\s*(?::\s*(.*?))?\)_", re.S)
 REVIEWED = re.compile(r"_\(reviewed\s+(\d{4}-\d{2}-\d{2})[^)]*\)_")
 SCOPE = re.compile(r"\[scope:\s*([^\]]+)\]", re.I)
+# a reworded or merged rule keeps the ids it used to have, so its usage history follows it
+WAS = re.compile(r"_\(was\s+([0-9a-f]{8}(?:[\s,]+[0-9a-f]{8})*)\)_")
 HOSTNAME = re.compile(r"\b(?:[\w-]+\.)*[a-z][\w-]*\.(?:com|in|io|dev|app|net|org|city|co|ai|cloud)\b", re.I)
 PLACEHOLDER_HOSTS = re.compile(r"(^|\.)(example|localhost|foo|bar|test|domain|yourdomain|mysite)\.", re.I)
 # basenames too generic to mean "this rule is about that project"
@@ -519,7 +521,8 @@ def parse_rules():
                 continue
             scope = SCOPE.search(line)
             reviewed = REVIEWED.findall(line)
-            text = LEARNED.sub("", REVIEWED.sub("", SCOPE.sub("", line)))
+            was = [i for m in WAS.findall(line) for i in re.findall(r"[0-9a-f]{8}", m)]
+            text = LEARNED.sub("", REVIEWED.sub("", SCOPE.sub("", WAS.sub("", line))))
             text = re.sub(r"_\(learned\b[^)]*\)_", "", text)  # unreadable stamp, kept out of the text
             text = re.sub(r"^\s*[-*]\s*(\[[ x~]\]\s*)?", "", text)
             text = re.sub(r"\s+", " ", text).strip()
@@ -530,6 +533,7 @@ def parse_rules():
                 "cause": (m.group(3) or "").strip() if m else "",
                 "scope": scope.group(1).strip() if scope else None,
                 "reviewed": max(reviewed) if reviewed else None,
+                "was": was,
                 "malformed": stamped and not m,
             })
     return rules
@@ -596,6 +600,18 @@ def usage_by_rule():
         day = time.strftime("%Y-%m-%d", time.localtime(r.get("ts", 0)))
         s["last_applied"] = max(filter(None, [s["last_applied"], day]))
     return stats
+
+
+def merged_usage(usage, ids):
+    """Usage of a rule across its current id and the ids it had before a reword/merge."""
+    out = {"applied": 0, "caught": 0, "last_applied": None}
+    for i in ids:
+        s = usage.get(i)
+        if s:
+            out["applied"] += s["applied"]
+            out["caught"] += s["caught"]
+            out["last_applied"] = max(filter(None, [out["last_applied"], s["last_applied"]]), default=None)
+    return out
 
 
 def usage_summary():
@@ -694,6 +710,9 @@ def rule_lookup():
         print(f"no rule with id {i} (reworded rules get a new id: rerun --context)")
 
 
+CAUSE_MAX = 80
+
+
 def rule_max():
     try:
         return int(cfg().get("rule_max_chars", 250))
@@ -705,15 +724,20 @@ def lint_rules():
     """Write-time budget check for /learn and the correction hook: rules over rule_max_chars and
     knowledge files over kb_budget_kb. Advisory output, exit 0."""
     limit = rule_max()
-    long_rules = [r for r in parse_rules() if len(r["rule"]) > limit]
+    rules = parse_rules()
+    long_rules = [r for r in rules if len(r["rule"]) > limit]
+    long_causes = [r for r in rules if len(r["cause"]) > CAUSE_MAX]
     budget, sizes = kb_sizes()
     for r in long_rules:
         print(f"too-long {r['id']} {r['file']}:{r['line']} {len(r['rule'])}/{limit} chars — "
               f"{headline(r['rule'])}")
+    for r in long_causes:  # provenance only, but it's most of a file's bytes when it rambles
+        print(f"long-cause {r['id']} {r['file']}:{r['line']} {len(r['cause'])}/{CAUSE_MAX} chars — "
+              f"keep the cause under 10 words")
     for name, kb in sizes:
         if kb > budget:
             print(f"over-budget {name} {kb} KB > {budget:g} KB — merge overlapping rules")
-    if not long_rules and all(kb <= budget for _, kb in sizes):
+    if not long_rules and not long_causes and all(kb <= budget for _, kb in sizes):
         print(f"ok: every rule ≤ {limit} chars, every file ≤ {budget:g} KB")
 
 
@@ -763,7 +787,7 @@ def audit_rules():
                            and similarity(tokens[id(r)], tokens[id(o)]) >= threshold]
         r["exact_duplicate"] = any(o is not r and o["id"] == r["id"] for o in rules)
     for r in rules:
-        r.update(usage.get(r["id"], {"applied": 0, "caught": 0, "last_applied": None}))
+        r.update(merged_usage(usage, [r["id"], *r["was"]]))
         flags = ["malformed"] if r["malformed"] else []
         if r["similar_to"]:
             flags.append("possible-duplicate")

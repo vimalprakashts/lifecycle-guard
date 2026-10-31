@@ -21,7 +21,7 @@ This command is interactive. If you are running headless (`LG_HEADLESS=1`, or `c
    Each rule also shows its usage from past reviews: `applied N× (caught M)` or `never applied`. A rule that keeps being applied stays fresh (age counts from its last use); `caught` means it exposed a real miss — strong evidence to keep it. A stale rule that was never applied is the prime candidate for scope or drop.
    If no rule is flagged, no file is over the size budget, and mode isn't `all`, say so and stop. An over-budget file alone is reason enough to continue to step 2.
 
-2. **Consolidate** (when a file is over budget, any rule is `possible-duplicate`, or mode is `all`): read the file's `## Learned` rules and propose merges for rules that overlap *conceptually*, such as one rule being a special case of another or two rules guarding the same failure from different angles. The duplicate flag only catches near-identical wording, so this is your judgement. For each merge, name the rule to keep. Prefer the one with more catches, kept word for word, because rewording resets its usage history. Fold the other rule's specifics into it only if they add something.
+2. **Consolidate** (when a file is over budget, any rule is `possible-duplicate`, or mode is `all`): read the file's `## Learned` rules and propose merges for rules that overlap *conceptually*, such as one rule being a special case of another or two rules guarding the same failure from different angles. The duplicate flag only catches near-identical wording, so this is your judgement. For each merge, name the rule to keep. Prefer the one with more catches. Fold the other rule's specifics into it only if they add something.
 
 3. For **no-origin** rules, try to recover the origin before asking: search `corrections.jsonl` and `prompts.jsonl` (each record has `cwd`) and `bootstrap/part-*.md` (lines are `[project date]`) for the rule's cause or distinctive words around its learned date. Propose the project you find, or `?` if none.
 
@@ -37,9 +37,9 @@ This command is interactive. If you are running headless (`LG_HEADLESS=1`, or `c
    - keep → remove every existing `_(reviewed …)_` stamp and append one `_(reviewed <today>)_` at the end of the line.
    - scope → insert `[scope: <project>]` right after `- [ ] ` and stamp `_(reviewed <today>)_` (replacing older ones).
    - set origin → turn `_(learned DATE: cause)_` into `_(learned DATE @ <project>: cause)_`.
-   - reword → replace the rule text and keep its learned stamp; stamp `_(reviewed <today>)_`. Rewording changes the rule's id, so its usage history starts over — mention that when recommending a reword of a rule with catches.
+   - reword → replace the rule text, keep its learned stamp, append `_(was <old id>)_` (add to an existing `was` list) and `_(reviewed <today>)_`. The `was` stamp carries the rule's usage history over to its new id.
    - drop → delete the line.
-   - merge → edit the kept rule only if it must absorb a specific; give it the earlier of the two learned dates (keep its own origin and cause) and add `_(reviewed <today>)_`; then delete the merged rule. Treat the merge like a drop: confirm it individually.
+   - merge → edit the kept rule only if it must absorb a specific; give it the earlier of the two learned dates (keep its own origin and cause), add the merged rule's id (and the kept rule's old id if you reworded it) as `_(was <id>, <id>)_` and `_(reviewed <today>)_`; then delete the merged rule. Treat the merge like a drop: confirm it individually.
 
 6. Append to `changelog.md`: `## <today> audit`, then one line per decision: `<keep|scope|reword|merge|drop|origin> <file>: <rule, first 80 chars> — <reason>`. For **drop**, **merge** and **reword**, log the full original line verbatim (for a merge, both lines — the merged one and the kept one if it was edited) (indented under the entry) so it can be restored without digging through backups.
 

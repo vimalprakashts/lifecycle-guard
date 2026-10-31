@@ -33,6 +33,12 @@ disclose progressively, and send instructions just in time. Measured on a 61-rul
   (transcript entrypoint, or no transcript + the system temp dir; `/tmp` is not treated as temp) without rewriting the logs. On a real KB:
   21 tool prompts and 1 false correction dropped, all 669 interactive prompts kept. Opt back in with
   `learn_from_automated: true`.
+- **Rewording keeps history:** a reworded or merged rule carries `_(was <old id>)_`; usage and catches
+  follow it (before, a reword reset them). `/audit`'s reword and merge steps add it.
+- `--lint-rules` also flags `long-cause` (a provenance stamp over 80 chars; the format is under 10 words).
+- Applied to a real 61-rule KB with `/audit`: 28 rules reworded to ≤ 250 chars and 36 causes shortened,
+  nothing dropped, all 46 catches kept. Rule text 15.4 → 10.2 KB, `core.md` 15.6 → 11.9 KB (under its
+  12 KB budget), audit flags 28 → 0, reviewer load 28.9 → 24.0 KB, builder (2 domains) 15.8 → 15.0 KB.
 - **Budget guard:** `tests/test_budget.py` caps every tier (always-on text, hook notes, SKILL, template,
   fallback prompt, builder load on a 60-rule fixture). CI fails on growth past a budget.
 

@@ -127,5 +127,16 @@ class Usage(unittest.TestCase):
         self.assertTrue(all(r["applied"] == 0 for r in self.audit().values()))
 
 
+    def test_reworded_rule_keeps_its_usage_via_was_stamp(self):
+        (self.data / "usage.jsonl").write_text(
+            json.dumps({"rule": self.refund, "outcome": "caught", "ts": time.time()}) + "\n")
+        (self.data / "core.md").write_text(
+            "## Learned\n"
+            f"- [ ] Admin refunds with a reason _(learned {OLD} @ shop: missed)_ _(was {self.refund})_\n")
+        r = self.audit()["Admin refunds with a reason"]
+        self.assertEqual((r["applied"], r["caught"]), (1, 1))
+        self.assertNotIn("was", self.digest("--context").split("Admin refunds")[1].split("\n")[0])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

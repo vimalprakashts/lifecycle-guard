@@ -16,5 +16,9 @@ domains: (none — plugin internals)
 ## Automated sessions (added)
 - [x] on_prompt skip + entrypoint field; digest is_automated / automated_record / bootstrap filter; config
 - [x] tests (AutomatedSessions); docs: CHANGELOG, README, PRIVACY, CLAUDE.md
+## Knowledge-base cleanup (added: user asked to fix it too)
+- [x] `_(was <id>)_` usage aliases (parse_rules, audit merge, audit.md reword/merge steps) + test
+- [x] --lint-rules long-cause + test; learn.md
+- [x] /audit on the user's KB: 28 rewords, 36 causes shortened, backups + changelog; audit 0 flagged
 ## Review
 - [x] Independent reviewer pass (lifecycle-reviewer, fresh context) — findings fixed or deferred
