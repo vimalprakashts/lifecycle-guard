@@ -12,6 +12,9 @@
   digest.py --rules [--cwd DIR]
                        list learned rules with ids (cited in review.md); scoped rules that don't
                        apply to DIR's project are marked "N/A here"
+  digest.py --context [--domains a,b] [--cwd DIR]
+                       one compact load for a feature: core + style + the named domains, learned rules
+                       as [id] text, rules scoped to other projects omitted (skill + reviewer use this)
   digest.py --lint-spec FILE...
                        flag spec/task lines that could be pasted into any feature's spec unchanged
                        ("handle errors gracefully") — advisory; the reviewer judges
@@ -550,6 +553,50 @@ def rules_list():
         print(f"{r['id']}  {r['file']}:{r['line']}{scope}  {r['rule'][:160]}")
 
 
+def flag_value(name):
+    """The value after `name` in argv, or None when it's missing or is the next flag."""
+    if name in sys.argv:
+        i = sys.argv.index(name) + 1
+        if i < len(sys.argv) and not sys.argv[i].startswith("--"):
+            return sys.argv[i]
+    return None
+
+
+def context():
+    """One compact load of the checklists for a feature: core + style + the named domains, learned rules
+    with ids, out-of-scope rules dropped, provenance stamps stripped. Replaces reading the KB files and
+    --rules separately (they overlap)."""
+    cwd = flag_value("--cwd") or os.getcwd()
+    wanted = [d.strip().removesuffix(".md") for d in (flag_value("--domains") or "").split(",") if d.strip()]
+    available = sorted(p.stem for p in (DATA / "domains").glob("*.md"))
+    files = [DATA / "core.md", DATA / "style.md"] + [DATA / "domains" / f"{d}.md" for d in wanted if d in available]
+    rules = {(r["file"], r["line"]): r for r in parse_rules()}
+    out, skipped = [], 0
+    for f in files:
+        if not f.exists():
+            continue
+        rel = str(f.relative_to(DATA))
+        out.append(f"## {rel}")
+        for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            r = rules.get((rel, n))
+            if r:
+                if r["scope"] and not in_scope(r["scope"], cwd):
+                    skipped += 1
+                else:
+                    out.append(f"- [{r['id']}] {r['rule']}")
+            elif line.strip():
+                line = re.sub(r"^(\s*[-*]\s*)\[[ x~]\]\s*", r"\1", line)
+                line = re.sub(r"\s*_\([^)]*\)_\s*$", "", line)  # trailing provenance note
+                out.append("#" + line if line.startswith("#") else line)  # nest under the file header
+    print(f"# lifecycle-guard checklists for `{project_name(cwd)}` — learned rules are mandatory, cite [id]s;"
+          f" {skipped} rule(s) scoped to other projects omitted")
+    print(f"domains available: {', '.join(available) or '(none)'}; loaded: {', '.join(d for d in wanted if d in available) or '(none)'}")
+    for d in wanted:
+        if d not in available:
+            print(f"no domain file: {d} (create domains/{d}.md if the feature needs one)")
+    print("\n".join(out))
+
+
 def project_info():
     cwd = sys.argv[2] if len(sys.argv) > 2 else os.getcwd()
     print(f"project: {project_name(cwd)}")
@@ -658,4 +705,4 @@ if __name__ == "__main__":
         sys.exit(0)
     {"--bootstrap": bootstrap, "--mark": mark, "--stats": stats,
      "--audit": audit, "--rules": rules_list, "--usage": usage_summary,
-     "--project": project_info}.get(arg, since_last)()
+     "--project": project_info, "--context": context}.get(arg, since_last)()

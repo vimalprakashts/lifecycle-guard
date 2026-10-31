@@ -2,6 +2,23 @@
 
 All notable changes to lifecycle-guard. Releases: https://github.com/vimalprakashts/lifecycle-guard/releases
 
+## 1.11.0 — 2026-10-31
+- **Token diet** ([#1](https://github.com/vimalprakashts/lifecycle-guard/issues/1): the plugin was ~26%
+  of a heavy user's usage). A full feature loaded ~55 KB of instructions and checklists, re-sent on every
+  later turn, and about a third of it twice: `digest.py --rules` reprinted the learned rules already read
+  from `core.md` and `domains/*.md`.
+  - New `digest.py --context --domains a,b`: one compact load of core + style + the named domains.
+    Learned rules print as `[id] text` with the provenance stamps stripped, and rules scoped to other
+    projects are left out. The skill, the reviewer and the feature nudge use it instead of reading the KB
+    files and `--rules`. Measured on a real KB: 42 KB → 23 KB (−45%) per load, for both the builder and
+    the reviewer. Most of what's left is the learned rules' own text; `/lifecycle-guard:audit` trims that.
+  - `SKILL.md` 13.2 KB → 7.3 KB: the spec section detail, tasks template and portability test moved to
+    `references/spec-template.md`, read only when writing a full spec. Trivial and small changes no
+    longer pay for it. No rule was dropped.
+  - The reviewer's second round runs only when round 1 found critical/high issues, and is scoped to
+    those fixes and the files touched since, instead of a full re-review.
+  - `tasks.md` gains a `domains:` line so the reviewer loads the same checklists as the builder.
+
 ## 1.10.0 — 2026-10-29
 - **Behavioural evals** (adopting "measure first" from Anthropic's article on folding subagents into the
   main loop): `plugins/lifecycle-guard/evals/` holds 9 golden cases for `claude plugin eval`: seven

@@ -70,8 +70,9 @@ def main() -> None:
         )
     elif cfg.get("feature_nudge") and FEATURE.search(prompt) and len(prompt.split()) >= 4:
         notes.append(
-            "[lifecycle-guard] This looks like a feature request. Use the lifecycle-guard skill: load "
-            f"{DATA}/core.md, {DATA}/style.md and any relevant {DATA}/domains/*.md, write "
+            "[lifecycle-guard] This looks like a feature request. Use the lifecycle-guard skill: load the "
+            f"checklists in one call (python3 {DATA}/bin/digest.py --context --domains <relevant ones from "
+            f"{DATA}/domains/>), write "
             ".lifecycle/<feature-slug>/spec.md + tasks.md covering every actor, state, failure path and "
             "cross-cutting concern BEFORE writing code. Skip only if the request is a trivial tweak."
         )

@@ -7,11 +7,11 @@ Run the mandatory independent review for a feature and record the result. Target
 
 1. Identify the feature dir `.lifecycle/<slug>/` and read its `spec.md` + `tasks.md`. Determine the changed files (git diff for the feature, or the feature's code area).
 
-2. **Dispatch the critic in a fresh context** — the `lifecycle-reviewer` agent if available, else a fresh general-purpose subagent using `references/review.md`. Pass it the spec/tasks paths and the changed files (paths/diff, NOT the whole repo — token discipline). It returns `VERDICT: PASS|FAIL` + ranked findings across actor coverage, **CTA/deep-link coverage**, action closure, **interactivity**, state visibility, failure/edge cases, security/tenancy, CRUD parity, `## Learned` rules, and tests.
+2. **Dispatch the critic in a fresh context** — the `lifecycle-reviewer` agent if available, else a fresh general-purpose subagent using `references/review.md`. Pass it the spec/tasks paths, the changed files (paths/diff, NOT the whole repo — token discipline) and the checklist domains (the `domains:` line in `tasks.md`; else pick them from the spec). It returns `VERDICT: PASS|FAIL` + ranked findings across actor coverage, **CTA/deep-link coverage**, action closure, **interactivity**, state visibility, failure/edge cases, security/tenancy, CRUD parity, `## Learned` rules, and tests.
 
 3. **Fix** every critical/high finding (and cheap mediums) — unless the user only asked whether the feature is done: then report the findings, most severe first, with a verdict, and offer to fix them instead of editing. Where a fix is a reusable lesson, also apply "Learning in the moment" (append the rule to the right checklist).
 
-4. **Re-dispatch once** to confirm. Stop at PASS or after this 2nd round — never loop more (token cap).
+4. **Round 2 only if round 1 had critical/high findings you fixed**, scoped: pass the round-1 findings, the fix for each and the files touched since; the critic confirms them and checks for regressions. No round 2 after a PASS, after medium/low-only findings, or when you only reported findings without fixing. Never a third round (token cap).
 
 5. **Write the committed artifact** `.lifecycle/<slug>/review.md`:
    ```

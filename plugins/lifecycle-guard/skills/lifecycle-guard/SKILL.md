@@ -5,143 +5,64 @@ description: Full-lifecycle definition-of-done for building any feature end to e
 
 # Lifecycle Guard
 
-You tend to build the happy path for one actor and stop. This skill makes you design the whole lifecycle first, build against a checklist, and get blocked by a Stop hook until the checklist is done. The checklists are not static: they grow from the user's own corrections and prompts.
-
-All learned knowledge lives in `~/.claude/lifecycle-guard/`:
-
-- `core.md` — universal lifecycle checklist, applies to every feature
-- `style.md` — the user's stack, conventions and preferences, learned from their prompts
-- `domains/<domain>.md` — domain checklists (payments, auth, …), each with a `## Learned` section of rules that came from real misses
-
-Treat `## Learned` items as mandatory: each one exists because it was missed before. **Exception — scope:** a rule prefixed `[scope: <name>]` applies only in that project or in repos nested under a folder of that name. Don't work this out by hand: `python3 ~/.claude/lifecycle-guard/bin/digest.py --rules` marks every rule that doesn't apply here `N/A here (scope: …)` — mark those `N/A — scoped to <name>` in checklist coverage. Each rule's `_(learned DATE @ project: cause)_` stamp says where it came from; if a rule obviously doesn't fit the current codebase, follow the safer reading and suggest `/lifecycle-guard:audit` in one line.
-
-## Workflow
-
-### 1. Load context + ORIENT (silently) — critical, do this FIRST
-
-Read `core.md` and `style.md`. List `domains/` and read every file relevant to the request (a "subscription renewal" feature needs `payments.md` and `notifications.md`, for example). If no domain file fits, create `domains/<domain>.md` from your own domain knowledge using the structure of the existing ones, mark its header `> seeded by Claude — unverified`, and continue. Also read the project's `CLAUDE.md`.
-
-**Then ORIENT against what already exists — before writing the spec, never mind code.** You will add new things (a setting, a page, an endpoint); your job is to put them in the RIGHT existing home, not to build a parallel one. So inventory the current structure for the area you're touching:
-
-- **Routes / navigation / menus** — grep the router and any nav/tab/menu list. Know every existing page and section name.
-- **The natural home for your feature** — is there already a page, tab, settings section, modal, list, or report where this belongs? (e.g. a new AI toggle belongs on the existing AI settings page, not a brand-new tab.) Read that surface's code.
-- **Existing endpoints / services / DTOs / settings slices** — grep for ones that already do part of this, so you extend rather than duplicate.
-- **Existing BUSINESS RULES & constraints the feature touches** — min/max order value, order/qty limits, pricing & discount tiers, tax, stock thresholds, delivery eligibility, coupon rules, currency/rounding. Any value you will introduce (a default, preset, limit, threshold, budget band) MUST be consistent with these — never pick a number in isolation. (E.g. a "budget" selector must not offer amounts below the store's minimum order value.)
-- When placement isn't obvious, **build a quick sitemap**: list the routes/tabs and one line on what each already holds, and pick the fit from that.
-
-**Adding a NEW top-level surface (nav item, route/path, settings tab, page, endpoint) when an existing one is the natural home is a red flag** — prefer extending the existing surface. This decision is made HERE, from reading, not after the fact. Record the chosen placement + what you reused in the spec (§6/§7), so the reviewer can check it.
-
-### 2. Write the spec
-
-Create `.lifecycle/<feature-slug>/spec.md` in the project root:
-
-1. **Goal** — one paragraph.
-2. **Actors** — every role that touches it: end customer, admin/ops, super-admin/tenant owner, finance, support, system (cron, queues), external systems (gateway webhooks, third-party APIs).
-3. **Entity state machine** — every state and every transition, including who or what triggers each one and what happens on timeout. Use a mermaid `stateDiagram-v2`.
-4. **Per-actor capabilities + CTAs** — for each actor: screens, APIs, actions, and what they see in each state. For every metric, alert, list and notification, name the **call-to-action and its exact destination** — a deep-link to the pre-filtered, actionable view (not a generic page), and the action that closes the task in place. If a target page lacks the needed filter param, adding it is part of this feature. Any chart/graph is interactive (hover value + tooltip), not a static image. **"Call to action" is not dashboard-only — it applies to every page.** For each screen (list, table, detail, modal — not just dashboards), enumerate every reference it renders to another entity (order #, customer, product, invoice, affiliate, SKU, vendor, user) and make each a link to that entity's own page. A plain-text entity reference is a lifecycle dead-end.
-5. **Failure and edge cases** — walk every item in the loaded checklists' failure sections against this feature.
-6. **Cross-cutting** — permissions, tenant isolation, audit log, notifications, reporting/export, observability, config, migrations, data retention.
-   **Placement & reuse** (from the §1 orientation): name the existing page/route/tab/section/endpoint this feature EXTENDS, and the existing services/DTOs it reuses. If you are adding any NEW top-level surface (nav item, route, settings tab, page, endpoint), justify why no existing home fit — this is the anti-duplication record the reviewer checks.
-   **Business rules & dependencies**: for each KEY value, default, preset, limit or threshold the feature introduces, write one line — *why this value, what existing business rule it must respect, what it depends on, what depends on it, is it grouped correctly*. Reconcile every one against the constraints found in §1 (min/max order, limits, tax, pricing tiers, stock thresholds, delivery eligibility). A value that contradicts an existing rule is a bug, not a detail. This is the "think through the whole lifecycle, not just the happy path" record the reviewer checks.
-7. **Checklist coverage** — every item from `core.md` and the loaded domain files, each marked `✓ covered in §N`, or `N/A — <reason>`. Nothing silently skipped.
-8. **Acceptance criteria** — Given/When/Then, at least one per state transition and per actor.
-9. **Out of scope** — explicit.
-
-**Portability test** (before showing the spec): a requirement line that could be pasted unchanged into
-any other feature's spec specifies nothing — "handle errors gracefully", "notify the user", "ensure
-security", "all edge cases covered". It reads as covered and is easy to tick while the work is half
-done. Rewrite each one to name the concrete actor, state, trigger, channel, error or limit ("gateway
-timeout → order stays `pending_payment`; retry job after 5 min; customer sees 'payment pending'").
-Run `python3 ~/.claude/lifecycle-guard/bin/digest.py --lint-spec .lifecycle/<slug>/spec.md
-.lifecycle/<slug>/tasks.md` to catch the common phrasings; the reviewer checks the rest.
-
-Apply `style.md` throughout (stack, naming, folder layout, UI conventions).
-
-### 3. Write tasks and get approval
-
-Create `.lifecycle/<feature-slug>/tasks.md`:
-
-```markdown
-status: draft
-feature: <name>
-
-## Backend
-- [ ] ...
-## Customer UI
-- [ ] ...
-## Admin UI
-- [ ] ...
-## System / jobs / webhooks
-- [ ] ...
-## Notifications
-- [ ] ...
-## Tests
-- [ ] ...
-## Ops (migrations, config, logging, alerts, docs)
-- [ ] ...
-## Review
-- [ ] Independent reviewer pass (lifecycle-reviewer, fresh context) — findings fixed or deferred
-```
-
-Every spec item maps to at least one task. The **Review** section is mandatory —
-always include the reviewer-pass task; the Stop hook enforces that the §5 review
-actually happened before "done". Show the user a short summary (actor count, states, task count, notable N/A decisions) and ask for approval once. If the user already said to just proceed, skip the wait.
-
-On approval, change the header to `status: active`. From then on, a Stop hook will not let you finish while any `- [ ]` remains.
-
-### 4. Implement
-
-Work task by task. Tick a box only when the code exists and a test covers it. If an item truly can't be done now (needs credentials, a product decision, a later phase), mark it `- [~] <item> — <reason>` rather than leaving it open or pretending it's done.
-
-### 5. Verify — enforced independent review loop
-
-Self-review is not enough; you miss the same things twice. A **separate reviewer in
-a fresh context MUST run** before anything is called done — this is mandatory, not
-"if available", and it is why §3 always adds a `Reviewer agent pass` task that the
-Stop hook won't let you leave open.
-
-1. Run the test suite and any linters first; fix failures.
-2. **Dispatch the critic.** Prefer the `lifecycle-reviewer` agent; if your harness
-   has no plugin agents, spawn a fresh general-purpose subagent using
-   `references/review.md`. Give it the `spec.md`/`tasks.md` paths and the changed
-   files — NOT the whole repo. It reviews read-only and returns `VERDICT` + ranked
-   findings covering actor coverage, **CTA/deep-link coverage**, action closure,
-   **interactivity**, failure/edge cases, security/tenancy, CRUD parity, and the
-   `## Learned` rules.
-3. **Fix** every critical/high finding (and cheap mediums). Each fix that reflects a
-   reusable lesson also follows "Learning in the moment".
-4. **Re-dispatch once** to confirm. Stop at `VERDICT: PASS` or after this 2nd round —
-   never loop endlessly. Remaining findings after round 2 are reported to the user as
-   known gaps, not silently dropped.
-5. **Token discipline**: at most 2 review rounds; scope each dispatch to the diff +
-   spec; pass paths/excerpts, not file dumps; the critic runs on a mid-tier model.
-6. **Write the committed review artifact** `.lifecycle/<feature>/review.md` with the
-   verdict, findings addressed, and any deferred gaps (format in `/lifecycle-guard:review`).
-   Include the critic's `## Rules applied` list (rule ids from `digest.py --rules`, each `caught` or
-   `satisfied`) — the Stop hook records it so the audit knows which rules prevent misses.
-   The Stop hook requires this file to show `VERDICT: PASS` (or `review: deferred — <reason>`)
-   before a feature may be `status: done` — so the review cannot be silently skipped.
-7. **Definition of done** (paste the evidence, don't just claim it): run the build, the
-   test suite and the linter and paste their literal output. A failing suite fixes the
-   CODE, never the test. Only when build+tests+lint are green, the review is PASS (or
-   deferred), and every box is ticked or `- [~]`, set `status: done` and give the user a
-   short summary including deferred items and known gaps.
-
-If browser/E2E tooling is available, the critic (or you) should also click the
-feature's primary CTAs to confirm each lands on the correct, pre-filtered actionable
-view — a CTA that opens a generic page is a FAIL.
-
-## Learning in the moment
-
-When the user points out something missing or wrong (a hook will flag it too):
-
-1. Fix it and add it to the active `tasks.md`.
-2. Generalize it into a reusable rule — portable across projects (no project names) but specific about the failure: the situation, the miss, and the check. "You didn't add refund on admin panel" becomes "Admin can initiate full and partial refunds with reason; refund state reflected to customer." Append it under `## Learned` in the right domain file, or `core.md` if it applies to any feature, as `- [ ] <rule> _(learned YYYY-MM-DD @ <project>: <cause>)_` where `<project>` is the label from `python3 ~/.claude/lifecycle-guard/bin/digest.py --project` (the git repo's folder name). If it can only hold in this project (names its tenants, hosts, paths), prefix `[scope: <project>]` — or an enclosing folder's name if it holds for every repo under that folder.
-3. If it's about style or conventions ("use zod not yup", "always paginate admin lists server-side"), append to `style.md` instead.
-4. Check for an existing equivalent rule first. Strengthen its wording rather than duplicating it.
-
-Mention the learning in one short line; don't make a show of it.
+You tend to build the happy path for one actor and stop. This skill makes you design the whole lifecycle first, build against a checklist, and get blocked by a Stop hook until the checklist is done. The checklists grow from the user's own corrections; they live in `~/.claude/lifecycle-guard/` (`core.md`, `style.md`, `domains/<domain>.md`).
 
 ## Scale to the request
 
-For a trivial tweak (rename a label, fix a typo, change a color), skip the spec. For a small change inside an existing feature, a short spec section appended to that feature's existing `spec.md` and a few tasks is enough. The full workflow is for anything with new states, actors or integrations.
+For a trivial tweak (rename a label, fix a typo, change a color), skip all of this. For a small change inside an existing feature, append a short section to that feature's `spec.md` and add a few tasks. The full workflow is for anything with new states, actors or integrations.
+
+## Workflow
+
+### 1. Load context + ORIENT (silently, FIRST)
+
+`ls ~/.claude/lifecycle-guard/domains/`, pick the domains the request touches (a "subscription renewal" needs `payments` and `notifications`), then load everything in ONE call — don't read the KB files separately:
+
+`python3 ~/.claude/lifecycle-guard/bin/digest.py --context --domains payments,notifications`
+
+It prints core + style + those domains, each learned rule as `[id] text`, and omits rules scoped to other projects. Learned rules are mandatory: each exists because it was missed before. If one obviously doesn't fit this codebase, follow the safer reading and suggest `/lifecycle-guard:audit` in one line. If it prints `no domain file: <name>`, create `domains/<name>.md` from your domain knowledge in the shape of the existing ones, header `> seeded by Claude — unverified`. Also read the project's `CLAUDE.md`, and apply the style rules throughout.
+
+**Then orient against what already exists, before the spec.** Your job is to put new things in the RIGHT existing home, not build a parallel one:
+
+- **Routes / nav / menus / settings tabs** — grep the router and nav lists; know every existing page.
+- **The natural home** — the existing page, tab, section, modal, list or report where this belongs (a new AI toggle goes on the existing AI settings page, not a new tab). Read that surface's code.
+- **Existing endpoints / services / DTOs / settings** that already do part of this — extend, don't duplicate.
+- **Existing business rules** the feature touches — min/max order value, qty limits, pricing/discount tiers, tax, stock thresholds, delivery eligibility, coupons, rounding. Every value you introduce (default, preset, limit, threshold) must be consistent with them; never pick a number in isolation.
+- When placement isn't obvious, list the routes/tabs with one line each and pick the fit.
+
+A NEW top-level surface (nav item, route, settings tab, page, endpoint) where an existing one is the natural home is a red flag. Decide here, and record placement + reuse in the spec.
+
+### 2. Write the spec
+
+Read `references/spec-template.md` (next to this file) and write `.lifecycle/<feature-slug>/spec.md` from it: goal, actors, state machine, per-actor capabilities + CTAs and entity links, failure cases, cross-cutting (incl. placement & reuse and business-rule reconciliation), checklist coverage, acceptance criteria, out of scope. Apply its portability test and run its `--lint-spec` command before showing the spec.
+
+### 3. Write tasks and get approval
+
+Write `.lifecycle/<feature-slug>/tasks.md` from the same template (it includes the mandatory **Review** task and a `domains:` line). Show the user a short summary (actor count, states, task count, notable N/A decisions) and ask for approval once; if they already said to proceed, don't wait. On approval set `status: active` — from then on the Stop hook won't let you finish while any `- [ ]` remains.
+
+### 4. Implement
+
+Work task by task. Tick a box only when the code exists and a test covers it. If an item truly can't be done now (credentials, a product decision, a later phase), mark it `- [~] <item> — <reason>`; never fake `- [x]`.
+
+### 5. Verify — enforced independent review
+
+Self-review is not enough; you miss the same things twice. A separate reviewer in a fresh context MUST run before anything is called done.
+
+1. Run the tests and linters; fix failures.
+2. **Round 1:** dispatch the `lifecycle-reviewer` agent (no plugin agents? spawn a fresh general-purpose subagent with `references/review.md`). Pass the spec/tasks paths, the changed files, and the `--domains` you loaded — paths, not file dumps, not the whole repo. It returns `VERDICT` + ranked findings + `RULES APPLIED`.
+3. **Fix** every critical/high finding (and cheap mediums). A fix that reflects a reusable lesson also goes through "Learning in the moment".
+4. **Round 2 only if round 1 had critical/high findings.** Dispatch it scoped: the round-1 findings, what you changed for each, and the files touched since. It confirms those fixes and checks the touched files for regressions. Never a third round; anything left is reported to the user as a known gap.
+5. Write `.lifecycle/<feature>/review.md` (format in `/lifecycle-guard:review`) with the verdict, findings addressed, deferred gaps and the critic's `## Rules applied` list (merge rounds; `caught` wins). The Stop hook records rule usage and requires `VERDICT: PASS` (or `review: deferred — <reason>`) before `status: done`.
+6. **Definition of done** — paste evidence, don't claim it: run the build, tests and linter and paste their literal output. A failing suite fixes the CODE, never the test. Only when all are green, the review is PASS (or deferred) and every box is ticked or `- [~]`, set `status: done` and summarise for the user, including deferred items and known gaps.
+
+If browser/E2E tooling is available, click the feature's primary CTAs to confirm each lands on the correct pre-filtered actionable view — a CTA that opens a generic page is a FAIL.
+
+## Learning in the moment
+
+When the user points out something missing or wrong (a hook flags it too):
+
+1. Fix it and add it to the active `tasks.md`.
+2. Generalize it into a rule — portable across projects (no project names) but specific about the failure: the situation, the miss, the check. "You didn't add refund on admin panel" → "Admin can initiate full and partial refunds with reason; refund state reflected to customer." Append under `## Learned` in the right domain file, or `core.md` if it applies to any feature, as `- [ ] <rule> _(learned YYYY-MM-DD @ <project>: <cause>)_` (`<project>` from `digest.py --project`). If it only holds in this project (names its tenants, hosts, paths), prefix `[scope: <project>]`, or an enclosing folder's name if it holds for every repo under it.
+3. Style or convention ("use zod not yup") → `style.md` instead.
+4. If an equivalent rule exists, strengthen its wording instead of duplicating it.
+
+Mention the learning in one short line.
