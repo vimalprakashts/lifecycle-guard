@@ -10,7 +10,7 @@
 6. **Cross-cutting** — permissions, tenant isolation, audit log, notifications, reporting/export, observability, config, migrations, data retention.
    **Placement & reuse** (from the orientation): name the existing page/route/tab/section/endpoint this feature EXTENDS, and the existing services/DTOs it reuses. If you are adding any NEW top-level surface (nav item, route, settings tab, page, endpoint), justify why no existing home fit — this is the anti-duplication record the reviewer checks.
    **Business rules & dependencies**: for each KEY value, default, preset, limit or threshold the feature introduces, write one line — *why this value, what existing business rule it must respect, what it depends on, what depends on it, is it grouped correctly*. Reconcile every one against the constraints found while orienting (min/max order, limits, tax, pricing tiers, stock thresholds, delivery eligibility). A value that contradicts an existing rule is a bug, not a detail.
-7. **Checklist coverage** — every item from the loaded checklists (`--context` output), each marked `✓ covered in §N`, or `N/A — <reason>`. Nothing silently skipped. Learned rules are cited by `[id]`.
+7. **Checklist coverage** — every item from the loaded checklists (`--context` output), each marked `✓ covered in §N`, or `N/A — <reason>`. Nothing silently skipped. Learned rules are cited by `[id]`; end the section with `Rules fetched: <ids>` (the headline rules you read in full), so the reviewer can see what was checked.
 8. **Acceptance criteria** — Given/When/Then, at least one per state transition and per actor.
 9. **Out of scope** — explicit.
 
@@ -50,3 +50,18 @@ domains: <the --domains you loaded, e.g. payments,notifications>
 Every spec item maps to at least one task. The **Review** section is mandatory — the Stop hook
 enforces that the review actually happened before "done". The `domains:` line tells the reviewer
 which checklists to load.
+
+## `.lifecycle/<feature-slug>/review.md`
+
+```
+# Review — <slug>
+VERDICT: PASS | FAIL
+Reviewed: <YYYY-MM-DD> · rounds: <n>
+## Findings addressed
+- [severity] <file> — <what> → <fix applied>
+## Known gaps (deferred)
+- <item> — <reason>
+## Rules applied
+- <id> caught — <gap it exposed>
+- <id> satisfied
+```

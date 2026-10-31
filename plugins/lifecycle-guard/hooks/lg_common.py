@@ -27,6 +27,7 @@ SEED = PLUGIN_ROOT / "skills" / "lifecycle-guard" / "seed"
 sys.path.append(str(PLUGIN_ROOT / "scripts"))
 try:
     from digest import CORRECTION, clean_prompt, ingest_usage, prune_logs  # noqa: E402,F401
+    from digest import is_automated  # noqa: E402,F401
     from digest import project_name as project_of  # noqa: E402,F401
 except Exception as _err:  # never let a broken digest import take down the Stop gate
     import re as _re
@@ -48,6 +49,13 @@ except Exception as _err:  # never let a broken digest import take down the Stop
     def prune_logs(now=None):
         return {}
 
+    def is_automated(entrypoint):
+        try:
+            opted_in = json.loads((DATA / "config.json").read_text()).get("learn_from_automated") is True
+        except Exception:
+            opted_in = False
+        return (entrypoint or "").startswith("sdk-") and not opted_in
+
     def project_of(cwd):
         return (Path(cwd).name if cwd else "") or "?"
 
@@ -61,6 +69,8 @@ DEFAULT_CONFIG = {
     "log_retention_days": 180,     # prune prompt/correction logs older than this (0 = keep forever)
     "duplicate_threshold": 0.5,    # /audit flags rule pairs this similar as possible duplicates
     "kb_budget_kb": 12,            # /audit warns when a knowledge file grows past this size
+    "rule_max_chars": 250,         # /learn keeps new rules this short; /audit flags longer ones too-long
+    "learn_from_automated": False, # log prompts from `claude -p` / Agent SDK sessions (tools, not you)
     "last_learn_ts": 0,
 }
 

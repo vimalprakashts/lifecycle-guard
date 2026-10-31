@@ -1,4 +1,5 @@
 ---
+disable-model-invocation: true
 description: Review learned rules — keep, scope to a project, or drop stale / project-specific ones
 argument-hint: "[all]"
 ---
@@ -15,7 +16,8 @@ This command is interactive. If you are running headless (`LG_HEADLESS=1`, or `c
    - **stale** — not learned or reviewed within `review_after_days` (config, default 90).
    - **looks-project-specific** — unscoped but names a known project or a hostname.
    - **possible-duplicate** — shares most of its words with another rule (`similar to: <id>`): the same lesson written twice.
-   The header also warns when a knowledge file is over `kb_budget_kb` (default 12 KB). Every file is loaded for every feature, so size costs tokens and dilutes attention.
+   - **too-long** — longer than `rule_max_chars` (default 250). Recommend **reword**: the same lesson, shorter, leading with the situation and the check (the first ~100 chars become its headline in the builder's index). Long rules are the main cost of every feature.
+   The header also warns when a knowledge file is over `kb_budget_kb` (default 12 KB). Core and style are loaded for every feature, so size costs tokens and dilutes attention.
    Each rule also shows its usage from past reviews: `applied N× (caught M)` or `never applied`. A rule that keeps being applied stays fresh (age counts from its last use); `caught` means it exposed a real miss — strong evidence to keep it. A stale rule that was never applied is the prime candidate for scope or drop.
    If no rule is flagged, no file is over the size budget, and mode isn't `all`, say so and stop. An over-budget file alone is reason enough to continue to step 2.
 

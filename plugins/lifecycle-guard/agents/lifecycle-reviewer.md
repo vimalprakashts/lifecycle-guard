@@ -19,8 +19,8 @@ You review only — you never edit. You return findings; the main agent fixes th
 
 ## How to review
 1. Load the checklists in ONE call — don't read the KB files separately:
-   `python3 ~/.claude/lifecycle-guard/bin/digest.py --context --domains <the domains you were given>`.
-   It prints core + style + those domains; each learned rule as `[id] text` (cite those ids in the
+   `python3 ~/.claude/lifecycle-guard/bin/digest.py --context --full --domains <the domains you were given>`.
+   It prints core + style + those domains; each learned rule in full as `[id] text` (cite those ids in the
    output); rules scoped to other projects are already omitted. Read the project `CLAUDE.md`, the spec,
    the tasks, and every changed file. Run the test suite and linters if present (`Bash`), and report
    failures as findings.

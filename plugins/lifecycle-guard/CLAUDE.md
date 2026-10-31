@@ -13,7 +13,7 @@ corrections over time.
 
 - **Plugin root:** `~/claude-plugins/vimal-tools/plugins/lifecycle-guard/` (this dir).
 - **Marketplace repo:** `~/claude-plugins/vimal-tools/` (`.claude-plugin/marketplace.json` lists this plugin).
-- **Version:** `1.11.0` (see `.claude-plugin/plugin.json`).
+- **Version:** `1.12.0` (see `.claude-plugin/plugin.json`).
 - **Author:** Vimal Prakash. Runtime: Python 3 hooks + Markdown skill/agent/commands. No build step.
 
 ---
@@ -60,7 +60,7 @@ hooks/
   on_prompt.py                    UserPromptSubmit: log prompt, detect correction/feature, nudge
   on_stop.py                      Stop: the definition-of-done gate (see above)
   on_session_end.py               SessionEnd: auto-run /learn in the background when enough piled up
-scripts/digest.py                 prepares raw material for /learn (also --bootstrap/--mark/--stats/--audit/--rules/--context/--usage/--project/--prune-logs/--ingest-usage/--lint-spec)
+scripts/digest.py                 prepares raw material for /learn (also --bootstrap/--mark/--stats/--audit/--rules/--context/--rule/--lint-rules/--footprint/--usage/--project/--prune-logs/--ingest-usage/--lint-spec)
 skills/lifecycle-guard/
   SKILL.md                        the full-lifecycle workflow the agent follows
   references/review.md            review rubric the critic/`/review` uses
@@ -74,7 +74,8 @@ tests/test_rule_usage.py          stdlib unittest: rule ids, Stop-hook usage ing
 tests/test_stop_gate.py           stdlib unittest: every Stop gate case (boxes, review, status, guards)
 tests/test_maintenance.py         stdlib unittest: project identity + nested scopes, retention, dupes/size
 tests/test_spec_lint.py           stdlib unittest: --lint-spec flags generic requirement lines only
-tests/test_context.py             stdlib unittest: --context load (scope omit, ids = --rules, size) + slim prose
+tests/test_context.py             stdlib unittest: --context load (scope omit, ids = --rules, flags) + prose pointers
+tests/test_budget.py              stdlib unittest: CONTEXT BUDGET — caps every tier of text the plugin puts in context
 tests/test_manifest.py            stdlib unittest: manifests, frontmatter, hook wiring, SHA pins, CHANGELOG=version
 evals/                            behavioural golden set for `claude plugin eval` (fixture shop + 9 cases);
                                   NOT in CI (paid sessions) — see evals/README.md
@@ -146,7 +147,9 @@ ticking boxes → run critic → fix findings → write `review.md` PASS → `st
 
 ## Hooks — exact behavior
 
-- **UserPromptSubmit → `on_prompt.py`** (never blocks): appends the prompt to
+- **UserPromptSubmit → `on_prompt.py`** (never blocks): skips automated sessions entirely
+  (`CLAUDE_CODE_ENTRYPOINT=sdk-*`, i.e. `claude -p` / Agent SDK — tools, not the user; `digest.is_automated`,
+  opt in with `learn_from_automated`); otherwise appends the prompt (with its entrypoint) to
   `prompts.jsonl`; if it matches the CORRECTION regex ("you missed / forgot / where is the /
   not done / half-done…") it logs to `corrections.jsonl` and tells the agent to write the
   lesson into the right checklist now; if it matches the FEATURE regex it reminds the agent
@@ -198,7 +201,7 @@ Defaults live in `lg_common.DEFAULT_CONFIG`; `config.json` overrides them.
 - **Bump `version` in `.claude-plugin/plugin.json`** on a meaningful change (history: 1.2.0
   entity-coverage → 1.3.0 entity cross-links on every page → 1.4.0 orient-before-building /
   no-duplicate-surface → 1.5.0 business-logic reconciliation → 1.6.0 rule provenance, scoping + /audit → 1.6.1 learn only from the user's own words → 1.7.0 rule usage tracking → 1.8.0 gate tests + fixes, git-root identity, retention, dupes/size → 1.8.1 bin refresh before slash commands → 1.9.0 spec-slop lint + reviewer gate, SHA-pinned CI,
-  manifest test, PRIVACY.md → 1.10.0 behavioural evals + review routing fix → 1.11.0 token diet (--context, slim SKILL, conditional round 2);
+  manifest test, PRIVACY.md → 1.10.0 behavioural evals + review routing fix → 1.12.0 context diet + budget guard (#1);
   full history in the repo-root `CHANGELOG.md`).
 - **Releases are automatic:** a version bump merged to `main` triggers `.github/workflows/release.yml`
   (tests → `v<version>` release, notes = bump commit body + commits since last tag). CI
@@ -228,10 +231,23 @@ Defaults live in `lg_common.DEFAULT_CONFIG`; `config.json` overrides them.
   failure/edge, cross-cutting, acceptance, behaviour) when a spec has them, else the whole file; quoted
   text, code fences and `N/A` lines are mentions, not requirements. It is line-based: multi-line backtick
   spans aren't recognised, and "notify the user via" + "email" on the next line is still flagged. The reviewer's Spec-specificity gate is the judgement layer.
-- **Token budget:** the skill and reviewer load checklists with ONE `digest.py --context --domains …` call;
-  never tell them to read the KB files or `--rules` as well (that duplicated ~a third of the load, #1).
-  Keep SKILL.md lean (`test_context` caps it at 7.5 KB); put detail needed only in one phase in
-  `references/` and point to it from that phase.
+- **Context budget (#1 — never again).** Everything this plugin adds to a model's context is a cost paid
+  on every later turn. Tiers and caps (enforced by `tests/test_budget.py`; raise one only with a reason
+  in the commit and CHANGELOG):
+
+  | Tier | When it's paid | Cap |
+  |---|---|---|
+  | Model-visible descriptions (skill, agent, commands without `disable-model-invocation`) | every turn, every session | 1,450 B |
+  | One hook note (correction / feature nudge) | per matching prompt, stays in the transcript | 700 B |
+  | `SKILL.md` | per feature, then every later turn | 7,200 B |
+  | `references/spec-template.md` / `review.md` | only in the phase that needs it | 4,800 / 4,500 B |
+  | `--context` builder load (60-rule fixture, 1 domain) | per feature | 9,000 B |
+
+  Rules: load an index and fetch detail on demand (`--context` headlines + `--rule`); filter in
+  `digest.py`, not in the model; put phase-only detail in `references/`; send instructions just in time
+  (hooks) instead of up front; heavy, complete loads (`--full`) only in disposable subagent contexts;
+  user-only commands get `disable-model-invocation: true`; the knowledge base is budgeted at write time
+  (`rule_max_chars`, `kb_budget_kb`). Never tell an agent to read the KB files directly, except `/learn` and `/audit`, which edit them (auto-learn pays that full read on each run).
 - CI actions are pinned to commit SHAs (`test_manifest` enforces it); bump them deliberately.
 
 - The Stop gate keys off `status: active` in `tasks.md`. A `draft` or `done` feature won't block.

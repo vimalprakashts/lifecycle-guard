@@ -35,6 +35,13 @@ hooks, skill and docs are just as welcome.
 - A hook must **never** break the session — keep the top-level `try/except … pass` in each hook intact.
 - Run the tests: `for t in plugins/lifecycle-guard/tests/test_*.py; do python3 $t; done` (stdlib only; uses a temp `LG_DATA_DIR`, never your real knowledge base).
 
+## Context budget
+
+Every byte the plugin puts into a model's context is paid again on each later turn. `tests/test_budget.py`
+caps each tier (descriptions, hook notes, SKILL.md, references, the `--context` load); if your change needs
+more, raise the cap in the same PR and say why. Prefer an index + fetch-on-demand, `references/` for
+phase-only detail, and hooks for just-in-time instructions over adding text to SKILL.md.
+
 ## Releasing
 
 Bump `version` in `plugins/lifecycle-guard/.claude-plugin/plugin.json` in the same commit as the change,

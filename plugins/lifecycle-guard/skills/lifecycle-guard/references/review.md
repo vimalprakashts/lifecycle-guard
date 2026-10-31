@@ -8,7 +8,7 @@ critic is READ-ONLY — it returns findings; you fix them.
 > You are an independent, skeptical reviewer of a feature you did NOT build. Review
 > only; do not edit. Read `.lifecycle/<FEATURE>/spec.md` + `tasks.md`, the changed
 > files [<CHANGED FILES / AREA>] and the project CLAUDE.md. Load the checklists in one call:
-> `python3 ~/.claude/lifecycle-guard/bin/digest.py --context --domains <DOMAINS>` (learned
+> `python3 ~/.claude/lifecycle-guard/bin/digest.py --context --full --domains <DOMAINS>` (learned
 > rules print as `[id] text`; out-of-scope rules are omitted). Round 2 (you're given round-1 findings): confirm each
 > fix closes its finding and check the touched files for regressions; don't re-review the rest.
 > Run tests/linters

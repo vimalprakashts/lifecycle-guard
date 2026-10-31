@@ -12,9 +12,13 @@
   digest.py --rules [--cwd DIR]
                        list learned rules with ids (cited in review.md); scoped rules that don't
                        apply to DIR's project are marked "N/A here"
-  digest.py --context [--domains a,b] [--cwd DIR]
+  digest.py --context [--domains a,b] [--cwd DIR] [--full]
                        one compact load for a feature: core + style + the named domains, learned rules
-                       as [id] text, rules scoped to other projects omitted (skill + reviewer use this)
+                       as [id] text, rules scoped to other projects omitted; core/style rules as a
+                       headline index unless --full (skill uses the index, the reviewer --full)
+  digest.py --rule ID[,ID]  full text of those rules
+  digest.py --lint-rules    rules over rule_max_chars, files over kb_budget_kb (write-time budget)
+  digest.py --footprint     what a feature costs in context with this knowledge base
   digest.py --lint-spec FILE...
                        flag spec/task lines that could be pasted into any feature's spec unchanged
                        ("handle errors gracefully") — advisory; the reviewer judges
@@ -29,6 +33,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 from collections import Counter
 from functools import lru_cache
@@ -156,11 +161,72 @@ def in_scope(scope, cwd):
     return not scope or scope.lower() in {n.lower() for n in project_scopes(cwd)}
 
 
+# --- automated sessions ---------------------------------------------------------
+# Claude Code sets CLAUDE_CODE_ENTRYPOINT=sdk-cli for `claude -p` (sdk-ts / sdk-py for Agent SDK apps);
+# an interactive terminal is `cli`. Prompts in those sessions are written by tools (other plugins'
+# summarizers, app backends, scripts), not by the user, so they must never become rules.
+# The system temp dir only (macOS /var/folders/…/T): where tools run throwaway sessions. /tmp is left out —
+# people do work there, and the observed leak (a summarizer's cwd) was under gettempdir().
+TEMP_ROOTS = tuple({os.path.realpath(tempfile.gettempdir()), "/private/var/folders", "/var/folders"})
+
+
+def learn_from_automated():
+    return cfg().get("learn_from_automated") is True  # a string "false" must not opt in
+
+
+def is_automated(entrypoint):
+    return (entrypoint or "").startswith("sdk-") and not learn_from_automated()
+
+
+def in_temp_dir(cwd):
+    real = os.path.realpath(cwd) if cwd else ""
+    return any(real == t or real.startswith(t + os.sep) for t in TEMP_ROOTS)
+
+
+_ENTRYPOINTS = {}
+
+
+def session_entrypoint(session):
+    """Entrypoint recorded in the session's transcript, None if there's no transcript."""
+    if not session or not re.fullmatch(r"[\w-]+", session):
+        return None
+    if session not in _ENTRYPOINTS:
+        _ENTRYPOINTS[session] = None
+        for f in PROJECTS.glob(f"*/{session}.jsonl"):
+            try:
+                with open(f, encoding="utf-8", errors="ignore") as fh:
+                    for _, line in zip(range(50), fh):
+                        if '"entrypoint"' in line:
+                            try:
+                                _ENTRYPOINTS[session] = json.loads(line).get("entrypoint")
+                            except Exception:
+                                continue
+                            break
+            except OSError:
+                pass  # unreadable transcript: treat as missing
+            break
+    return _ENTRYPOINTS[session]
+
+
+def automated_record(r):
+    """Read-time filter. New records carry the entrypoint; older ones are looked up in their transcript,
+    and one with no transcript that ran in the system temp dir was a tool's throwaway session."""
+    if "entrypoint" in r:
+        return is_automated(r["entrypoint"])
+    ep = session_entrypoint(r.get("session"))
+    if ep is not None:
+        return is_automated(ep)
+    return in_temp_dir(r.get("cwd")) and not learn_from_automated()
+
+
 def user_records(name, since=0.0, corrections=False):
     """Log records reduced to the user's own words. Filters at read time, so records logged by
-    older versions (task notifications, pasted text) are ignored without rewriting user data."""
+    older versions (task notifications, pasted text, automated sessions) are ignored without rewriting
+    user data."""
     out = []
     for r in read_jsonl(DATA / name, since):
+        if automated_record(r):
+            continue
         text = clean_prompt(r.get("prompt"))
         if text and (not corrections or CORRECTION.search(text)):
             out.append({**r, "prompt": text})
@@ -188,7 +254,7 @@ def user_texts(path):
             r = json.loads(line)
         except Exception:
             continue
-        if r.get("type") != "user" or r.get("isMeta"):
+        if r.get("type") != "user" or r.get("isMeta") or is_automated(r.get("entrypoint")):
             continue
         content = (r.get("message") or {}).get("content")
         texts = []
@@ -562,11 +628,24 @@ def flag_value(name):
     return None
 
 
+HEADLINE_CHARS = 100
+
+
+def headline(text):
+    """A rule's index line: the whole rule if short, else its first ~100 chars cut at a word."""
+    if len(text) <= HEADLINE_CHARS + 20:
+        return text
+    return text[:HEADLINE_CHARS].rsplit(" ", 1)[0].rstrip(",;:—- ") + " …"
+
+
 def context():
     """One compact load of the checklists for a feature: core + style + the named domains, learned rules
     with ids, out-of-scope rules dropped, provenance stamps stripped. Replaces reading the KB files and
-    --rules separately (they overlap)."""
+    --rules separately (they overlap). Like a tool search with detail levels: rules in the loaded domains
+    print in full; core/style rules print as a headline index (full text via --rule ids). --full prints
+    every rule in full (the reviewer, whose context is discarded after the review)."""
     cwd = flag_value("--cwd") or os.getcwd()
+    full = "--full" in sys.argv
     wanted = [d.strip().removesuffix(".md") for d in (flag_value("--domains") or "").split(",") if d.strip()]
     available = sorted(p.stem for p in (DATA / "domains").glob("*.md"))
     files = [DATA / "core.md", DATA / "style.md"] + [DATA / "domains" / f"{d}.md" for d in wanted if d in available]
@@ -583,18 +662,84 @@ def context():
                 if r["scope"] and not in_scope(r["scope"], cwd):
                     skipped += 1
                 else:
-                    out.append(f"- [{r['id']}] {r['rule']}")
+                    short = not full and not rel.startswith("domains/")
+                    out.append(f"- [{r['id']}] {headline(r['rule']) if short else r['rule']}")
             elif line.strip():
                 line = re.sub(r"^(\s*[-*]\s*)\[[ x~]\]\s*", r"\1", line)
                 line = re.sub(r"\s*_\([^)]*\)_\s*$", "", line)  # trailing provenance note
                 out.append("#" + line if line.startswith("#") else line)  # nest under the file header
     print(f"# lifecycle-guard checklists for `{project_name(cwd)}` — learned rules are mandatory, cite [id]s;"
           f" {skipped} rule(s) scoped to other projects omitted")
+    if not full:
+        print("rules ending in … are headlines: read the full text of every one that touches this feature "
+              "with `digest.py --rule <id>,<id>` before writing the spec")
     print(f"domains available: {', '.join(available) or '(none)'}; loaded: {', '.join(d for d in wanted if d in available) or '(none)'}")
     for d in wanted:
         if d not in available:
             print(f"no domain file: {d} (create domains/{d}.md if the feature needs one)")
     print("\n".join(out))
+
+
+def rule_lookup():
+    """Full text of the rules whose ids are given (comma or space separated)."""
+    ids = set(re.findall(r"\b[0-9a-f]{8}\b", " ".join(sys.argv[2:])))
+    if not ids:
+        print("usage: digest.py --rule <8-char id>[,<id>…]  (ids come from --context)")
+        return
+    found = [r for r in parse_rules() if r["id"] in ids]
+    for r in found:
+        scope = f" [scope: {r['scope']}]" if r["scope"] else ""
+        print(f"- [{r['id']}] ({r['file']}){scope} {r['rule']}")
+    for i in sorted(ids - {r["id"] for r in found}):
+        print(f"no rule with id {i} (reworded rules get a new id: rerun --context)")
+
+
+def rule_max():
+    try:
+        return int(cfg().get("rule_max_chars", 250))
+    except (TypeError, ValueError):
+        return 250
+
+
+def lint_rules():
+    """Write-time budget check for /learn and the correction hook: rules over rule_max_chars and
+    knowledge files over kb_budget_kb. Advisory output, exit 0."""
+    limit = rule_max()
+    long_rules = [r for r in parse_rules() if len(r["rule"]) > limit]
+    budget, sizes = kb_sizes()
+    for r in long_rules:
+        print(f"too-long {r['id']} {r['file']}:{r['line']} {len(r['rule'])}/{limit} chars — "
+              f"{headline(r['rule'])}")
+    for name, kb in sizes:
+        if kb > budget:
+            print(f"over-budget {name} {kb} KB > {budget:g} KB — merge overlapping rules")
+    if not long_rules and all(kb <= budget for _, kb in sizes):
+        print(f"ok: every rule ≤ {limit} chars, every file ≤ {budget:g} KB")
+
+
+def footprint():
+    """What a feature costs in context with this knowledge base (builder vs reviewer load)."""
+    def run(*extra):
+        saved = sys.argv
+        sys.argv = [saved[0], "--context", *extra]
+        try:
+            import io
+            from contextlib import redirect_stdout
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                context()
+            return len(buf.getvalue().encode("utf-8"))
+        finally:
+            sys.argv = saved
+    domains = sorted(p.stem for p in (DATA / "domains").glob("*.md"))
+    rules = parse_rules()
+    builder, everything, reviewer = run(), run("--domains", ",".join(domains)), run("--full", "--domains", ",".join(domains))
+    print(f"context per feature: builder {builder / 1024:.1f} KB (core + style)"
+          f" to {everything / 1024:.1f} KB (all {len(domains)} domains); reviewer up to {reviewer / 1024:.1f} KB")
+    print(f"learned rules: {len(rules)}, {sum(len(r['rule']) for r in rules) / 1024:.1f} KB of text; "
+          f"{sum(len(r['rule']) > rule_max() for r in rules)} over {rule_max()} chars")
+    for r in sorted(rules, key=lambda r: -len(r["rule"]))[:3]:
+        print(f"  longest: {r['id']} {len(r['rule'])} chars — {headline(r['rule'])}")
 
 
 def project_info():
@@ -611,6 +756,7 @@ def audit_rules():
     rules = parse_rules()
     usage = usage_by_rule()
     threshold = float(c.get("duplicate_threshold", 0.5))
+    max_len = rule_max()
     tokens = {id(r): rule_tokens(r["rule"]) for r in rules}
     for r in rules:
         r["similar_to"] = [o["id"] for o in rules if o is not r
@@ -637,6 +783,8 @@ def audit_rules():
             if hits:
                 flags.append("looks-project-specific")
                 r["mentions"] = hits
+        if len(r["rule"]) > max_len:
+            flags.append("too-long")
         r["flags"] = flags
     return rules, limit
 
@@ -667,7 +815,7 @@ def audit():
           f"(stale after {limit} days)")  # header is one block (lg-status reads up to the first blank line)
     print(f"no-origin: {counts['no-origin']} · stale: {counts['stale']} · "
           f"looks-project-specific: {counts['looks-project-specific']} · "
-          f"possible-duplicate: {counts['possible-duplicate']} · scoped: {scoped}")
+          f"possible-duplicate: {counts['possible-duplicate']} · too-long: {counts['too-long']} · scoped: {scoped}")
     print(f"usage: {caught} rules have caught a miss · {never} never applied in a review")
     if over:
         print("size: " + ", ".join(f"{n} {kb} KB" for n, kb in over) +
@@ -705,4 +853,5 @@ if __name__ == "__main__":
         sys.exit(0)
     {"--bootstrap": bootstrap, "--mark": mark, "--stats": stats,
      "--audit": audit, "--rules": rules_list, "--usage": usage_summary,
-     "--project": project_info, "--context": context}.get(arg, since_last)()
+     "--project": project_info, "--context": context, "--rule": rule_lookup,
+     "--lint-rules": lint_rules, "--footprint": footprint}.get(arg, since_last)()

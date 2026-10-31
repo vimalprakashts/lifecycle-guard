@@ -7,7 +7,7 @@ lives in `~/.claude/lifecycle-guard/` on your machine (or `$LG_DATA_DIR` if you 
 
 | File | Contents | Kept |
 |---|---|---|
-| `prompts.jsonl` | Prompts you type, with the working directory and session id | `log_retention_days` (default 180), but never pruned before `/learn` has used them |
+| `prompts.jsonl` | Prompts you type, with the working directory, session id and Claude Code entrypoint. Prompts from `claude -p` / Agent SDK sessions (tools and other plugins, not you) are not logged unless `learn_from_automated` is on | `log_retention_days` (default 180), but never pruned before `/learn` has used them |
 | `corrections.jsonl` | The subset of prompts that look like corrections ("you missed…") | Same as above |
 | `usage.jsonl` | Which learned rules each review applied (rule id, `caught`/`satisfied`, project folder name, feature slug) | Until you delete it |
 | `core.md`, `style.md`, `domains/*.md` | Your checklists and learned rules, as plain text you can read and edit | Until you edit or delete them |

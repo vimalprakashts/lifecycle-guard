@@ -118,7 +118,6 @@ class Context(unittest.TestCase):
 class Prose(unittest.TestCase):
     def test_skill_is_slim_and_points_to_context_and_template(self):
         text = (SKILL / "SKILL.md").read_text()
-        self.assertLessEqual(len(text.encode()), 7680)
         self.assertIn("--context --domains", text)
         self.assertIn("references/spec-template.md", text)
         self.assertTrue((SKILL / "references" / "spec-template.md").exists())
@@ -127,7 +126,7 @@ class Prose(unittest.TestCase):
     def test_reviewers_load_context_not_kb_files(self):
         for p in (ROOT / "agents" / "lifecycle-reviewer.md", SKILL / "references" / "review.md"):
             text = p.read_text()
-            self.assertIn("--context --domains", text, p.name)
+            self.assertIn("--context --full --domains", text, p.name)
             self.assertNotIn("--rules", text, p.name)
             self.assertNotRegex(text, r"\(`?core\.md`?, `?style\.md`?", p.name)
         self.assertIn("Round 2 only if round 1 had critical/high", (ROOT / "commands" / "review.md").read_text())

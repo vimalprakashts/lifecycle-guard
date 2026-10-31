@@ -2,22 +2,39 @@
 
 All notable changes to lifecycle-guard. Releases: https://github.com/vimalprakashts/lifecycle-guard/releases
 
-## 1.11.0 — 2026-10-31
-- **Token diet** ([#1](https://github.com/vimalprakashts/lifecycle-guard/issues/1): the plugin was ~26%
-  of a heavy user's usage). A full feature loaded ~55 KB of instructions and checklists, re-sent on every
-  later turn, and about a third of it twice: `digest.py --rules` reprinted the learned rules already read
-  from `core.md` and `domains/*.md`.
-  - New `digest.py --context --domains a,b`: one compact load of core + style + the named domains.
-    Learned rules print as `[id] text` with the provenance stamps stripped, and rules scoped to other
-    projects are left out. The skill, the reviewer and the feature nudge use it instead of reading the KB
-    files and `--rules`. Measured on a real KB: 42 KB → 23 KB (−45%) per load, for both the builder and
-    the reviewer. Most of what's left is the learned rules' own text; `/lifecycle-guard:audit` trims that.
-  - `SKILL.md` 13.2 KB → 7.3 KB: the spec section detail, tasks template and portability test moved to
-    `references/spec-template.md`, read only when writing a full spec. Trivial and small changes no
-    longer pay for it. No rule was dropped.
-  - The reviewer's second round runs only when round 1 found critical/high issues, and is scoped to
-    those fixes and the files touched since, instead of a full re-review.
-  - `tasks.md` gains a `domains:` line so the reviewer loads the same checklists as the builder.
+## 1.12.0 — 2026-10-31
+**Context diet** ([#1](https://github.com/vimalprakashts/lifecycle-guard/issues/1): the plugin was ~26%
+of a heavy user's usage). Applies the context techniques from Anthropic's "code execution with MCP" /
+Agent Skills posts and Cloudflare's Code Mode: load an index, fetch detail on demand, filter in code,
+disclose progressively, and send instructions just in time. Measured on a 61-rule knowledge base:
+
+| Load | 1.10.0 | 1.12.0 |
+|---|---|---|
+| Checklists, builder (2 domains) | 42 KB (KB files + `--rules`, rules twice) | 15.8 KB |
+| `SKILL.md` | 13.2 KB | 7.0 KB (+ 4.5 KB template, read only for a full spec) |
+| Always-on descriptions | 1,647 chars every turn | 1,430 |
+| Correction note | 1,001 chars | ~630 |
+
+- `digest.py --context --domains a,b`: one compact, de-duplicated load. Domain rules in full; core and
+  style rules as a headline index, full text on demand with `--rule <id>,<id>`; `--full` for the
+  reviewer, whose context is discarded after the review. Stamps stripped, out-of-scope rules dropped.
+- `SKILL.md` keeps the workflow; spec sections, tasks/review templates and the portability test moved to
+  `references/spec-template.md`.
+- Reviewer round 2 only after critical/high findings, scoped to those fixes. `tasks.md` gains `domains:`.
+- **Write-time budget:** rules stay ≤ `rule_max_chars` (250) — `/learn` and the correction note enforce
+  it, `digest.py --lint-rules` checks it, `/audit` flags longer rules `too-long`; `/learn` handles
+  over-budget files (interactively merges; unattended, reports). `/lg-status` shows `--footprint`.
+- `/audit`, `/bootstrap`, `/lg-status` are `disable-model-invocation`: user-only, so their descriptions
+  no longer sit in every session's context. `/learn` stays visible (auto-learn runs it headless).
+- **Fix: automated sessions no longer feed learning.** Prompts from `claude -p` and Agent SDK sessions
+  (`CLAUDE_CODE_ENTRYPOINT=sdk-*`: another plugin's summarizer, an app backend, a script) were logged as
+  the user's prompts — one, "You are a memory consolidation agent…", was logged as a *correction*. The
+  prompt hook now skips them (no log, no nudge); `/learn` and `/bootstrap` ignore old ones at read time
+  (transcript entrypoint, or no transcript + the system temp dir; `/tmp` is not treated as temp) without rewriting the logs. On a real KB:
+  21 tool prompts and 1 false correction dropped, all 669 interactive prompts kept. Opt back in with
+  `learn_from_automated: true`.
+- **Budget guard:** `tests/test_budget.py` caps every tier (always-on text, hook notes, SKILL, template,
+  fallback prompt, builder load on a 60-rule fixture). CI fails on growth past a budget.
 
 ## 1.10.0 — 2026-10-29
 - **Behavioural evals** (adopting "measure first" from Anthropic's article on folding subagents into the

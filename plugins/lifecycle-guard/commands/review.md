@@ -13,7 +13,7 @@ Run the mandatory independent review for a feature and record the result. Target
 
 4. **Round 2 only if round 1 had critical/high findings you fixed**, scoped: pass the round-1 findings, the fix for each and the files touched since; the critic confirms them and checks for regressions. No round 2 after a PASS, after medium/low-only findings, or when you only reported findings without fixing. Never a third round (token cap).
 
-5. **Write the committed artifact** `.lifecycle/<slug>/review.md`:
+5. **Write the committed artifact** `.lifecycle/<slug>/review.md` (format also in the skill's `references/spec-template.md`; keep the two identical):
    ```
    # Review — <slug>
    VERDICT: PASS | FAIL

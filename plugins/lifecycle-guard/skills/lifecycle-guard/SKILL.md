@@ -5,7 +5,7 @@ description: Full-lifecycle definition-of-done for building any feature end to e
 
 # Lifecycle Guard
 
-You tend to build the happy path for one actor and stop. This skill makes you design the whole lifecycle first, build against a checklist, and get blocked by a Stop hook until the checklist is done. The checklists grow from the user's own corrections; they live in `~/.claude/lifecycle-guard/` (`core.md`, `style.md`, `domains/<domain>.md`).
+You tend to build the happy path for one actor and stop. Design the whole lifecycle first, build against a checklist, and a Stop hook blocks you until it's done. The checklists grow from the user's corrections and live in `~/.claude/lifecycle-guard/`.
 
 ## Scale to the request
 
@@ -19,7 +19,7 @@ For a trivial tweak (rename a label, fix a typo, change a color), skip all of th
 
 `python3 ~/.claude/lifecycle-guard/bin/digest.py --context --domains payments,notifications`
 
-It prints core + style + those domains, each learned rule as `[id] text`, and omits rules scoped to other projects. Learned rules are mandatory: each exists because it was missed before. If one obviously doesn't fit this codebase, follow the safer reading and suggest `/lifecycle-guard:audit` in one line. If it prints `no domain file: <name>`, create `domains/<name>.md` from your domain knowledge in the shape of the existing ones, header `> seeded by Claude — unverified`. Also read the project's `CLAUDE.md`, and apply the style rules throughout.
+It prints core + style + those domains and omits rules scoped to other projects. Learned rules (`[id] …`) are mandatory: each exists because it was missed before. Domain rules print in full; core and style rules print as a headline index — read the full text of every one whose headline touches this feature with `digest.py --rule <id>,<id>` before writing the spec. If one obviously doesn't fit this codebase, follow the safer reading and suggest `/lifecycle-guard:audit` in one line. If it prints `no domain file: <name>`, create `domains/<name>.md` from your domain knowledge in the shape of the existing ones, header `> seeded by Claude — unverified`. Also read the project's `CLAUDE.md`, and apply the style rules throughout.
 
 **Then orient against what already exists, before the spec.** Your job is to put new things in the RIGHT existing home, not build a parallel one:
 
@@ -45,24 +45,17 @@ Work task by task. Tick a box only when the code exists and a test covers it. If
 
 ### 5. Verify — enforced independent review
 
-Self-review is not enough; you miss the same things twice. A separate reviewer in a fresh context MUST run before anything is called done.
+Self-review misses the same things twice: a fresh-context reviewer MUST run before anything is called done.
 
 1. Run the tests and linters; fix failures.
-2. **Round 1:** dispatch the `lifecycle-reviewer` agent (no plugin agents? spawn a fresh general-purpose subagent with `references/review.md`). Pass the spec/tasks paths, the changed files, and the `--domains` you loaded — paths, not file dumps, not the whole repo. It returns `VERDICT` + ranked findings + `RULES APPLIED`.
+2. **Round 1:** dispatch the `lifecycle-reviewer` agent (no plugin agents? spawn a fresh general-purpose subagent with `references/review.md`). Pass the spec/tasks paths, the changed files, and the `--domains` you loaded (it loads every rule in full; its context is discarded afterwards) — paths, not file dumps, not the whole repo. It returns `VERDICT` + ranked findings + `RULES APPLIED`.
 3. **Fix** every critical/high finding (and cheap mediums). A fix that reflects a reusable lesson also goes through "Learning in the moment".
 4. **Round 2 only if round 1 had critical/high findings.** Dispatch it scoped: the round-1 findings, what you changed for each, and the files touched since. It confirms those fixes and checks the touched files for regressions. Never a third round; anything left is reported to the user as a known gap.
-5. Write `.lifecycle/<feature>/review.md` (format in `/lifecycle-guard:review`) with the verdict, findings addressed, deferred gaps and the critic's `## Rules applied` list (merge rounds; `caught` wins). The Stop hook records rule usage and requires `VERDICT: PASS` (or `review: deferred — <reason>`) before `status: done`.
+5. Write `.lifecycle/<feature>/review.md` (format in `references/spec-template.md`) with the verdict, findings addressed, deferred gaps and the critic's `## Rules applied` list (merge rounds; `caught` wins). The Stop hook records rule usage and requires `VERDICT: PASS` (or `review: deferred — <reason>`) before `status: done`.
 6. **Definition of done** — paste evidence, don't claim it: run the build, tests and linter and paste their literal output. A failing suite fixes the CODE, never the test. Only when all are green, the review is PASS (or deferred) and every box is ticked or `- [~]`, set `status: done` and summarise for the user, including deferred items and known gaps.
 
 If browser/E2E tooling is available, click the feature's primary CTAs to confirm each lands on the correct pre-filtered actionable view — a CTA that opens a generic page is a FAIL.
 
 ## Learning in the moment
 
-When the user points out something missing or wrong (a hook flags it too):
-
-1. Fix it and add it to the active `tasks.md`.
-2. Generalize it into a rule — portable across projects (no project names) but specific about the failure: the situation, the miss, the check. "You didn't add refund on admin panel" → "Admin can initiate full and partial refunds with reason; refund state reflected to customer." Append under `## Learned` in the right domain file, or `core.md` if it applies to any feature, as `- [ ] <rule> _(learned YYYY-MM-DD @ <project>: <cause>)_` (`<project>` from `digest.py --project`). If it only holds in this project (names its tenants, hosts, paths), prefix `[scope: <project>]`, or an enclosing folder's name if it holds for every repo under it.
-3. Style or convention ("use zod not yup") → `style.md` instead.
-4. If an equivalent rule exists, strengthen its wording instead of duplicating it.
-
-Mention the learning in one short line.
+When the user points out something missing or wrong, fix it, add it to the active `tasks.md`, and record one rule (portable, ≤ 250 chars, situation + check first) under `## Learned` in the right domain file (`core.md` if universal, `style.md` if a convention) as `- [ ] <rule> _(learned YYYY-MM-DD @ <digest.py --project>: <cause>)_`, prefixed `[scope: <project>]` if it only holds here. Strengthen an equivalent rule instead of duplicating.

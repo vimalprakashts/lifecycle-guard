@@ -8,12 +8,13 @@
 Never blocks the prompt.
 """
 import json
+import os
 import re
 import sys
 
-sys.path.insert(0, __import__("os").path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(__file__))
 from lg_common import (CORRECTION, DATA, append_jsonl, clean_prompt,  # noqa: E402
-                       ensure_data_dir, headless, load_config, project_of, read_hook_input)
+                       ensure_data_dir, headless, is_automated, load_config, project_of, read_hook_input)
 
 FEATURE = re.compile(
     r"\b(build|implement|develop|create|add|integrate|design|make|set ?up|wire up)\b"
@@ -46,8 +47,14 @@ def main() -> None:
     if not prompt or prompt.startswith("/"):
         return
     cfg = load_config()
+    # a `claude -p` / Agent SDK session's prompts are written by a tool, not the user: never learn from
+    # them, and don't spend that session's context on nudges either
+    entrypoint = os.environ.get("CLAUDE_CODE_ENTRYPOINT", "")
+    if is_automated(entrypoint):
+        return
 
-    rec = {"prompt": prompt[:4000], "cwd": data.get("cwd", ""), "session": data.get("session_id", "")}
+    rec = {"prompt": prompt[:4000], "cwd": data.get("cwd", ""), "session": data.get("session_id", ""),
+           "entrypoint": entrypoint}
     append_jsonl("prompts.jsonl", rec)
 
     notes = []
@@ -55,18 +62,13 @@ def main() -> None:
         append_jsonl("corrections.jsonl", rec)
         project = project_of(rec["cwd"])
         notes.append(
-            "[lifecycle-guard] This message looks like a correction of missed scope or a repeated mistake. "
-            "After fixing it: (1) add the missing item to the active .lifecycle/<feature>/tasks.md; "
-            "(2) generalise it into a reusable rule (portable across projects, but specific about the failure: "
-            "the situation, the miss, the check) and "
-            f"append it under '## Learned' in the matching file in "
-            f"{DATA}/domains/ (create the domain file if none fits) or {DATA}/core.md if it applies to every "
-            f"feature; format: '- [ ] <rule> _(learned YYYY-MM-DD @ {project}: <one-line cause>)_'. "
-            f"If the rule only makes sense in this project (names its tenants, hosts, paths, entities), "
-            f"prefix it with '[scope: {project}]' so it is not applied elsewhere (a scope also covers "
-            f"repos nested under a folder of that name). Skip duplicates. "
-            "If it is a style/convention correction rather than missed scope, append it to "
-            f"{DATA}/style.md instead. Do this silently in one edit; mention it in one short line at the end."
+            "[lifecycle-guard] Looks like a correction. After fixing it, add the item to the active "
+            ".lifecycle/*/tasks.md and record ONE rule under '## Learned' in "
+            f"{DATA}/domains/<domain>.md (core.md if it applies to every feature, style.md if it's a "
+            f"convention): '- [ ] <rule> _(learned YYYY-MM-DD @ {project}: <cause>)_'. The rule: portable (no "
+            "project names), at most 250 chars, leading with the situation and the check (its first 100 chars "
+            f"are its headline). Prefix '[scope: {project}]' if it only holds here. Strengthen an existing "
+            "rule rather than duplicate. One silent edit; mention it in one line."
         )
     elif cfg.get("feature_nudge") and FEATURE.search(prompt) and len(prompt.split()) >= 4:
         notes.append(

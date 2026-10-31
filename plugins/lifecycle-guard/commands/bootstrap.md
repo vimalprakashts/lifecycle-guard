@@ -1,4 +1,5 @@
 ---
+disable-model-invocation: true
 description: One-time scan of all past Claude Code sessions to seed checklists and style
 ---
 

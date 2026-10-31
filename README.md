@@ -152,7 +152,9 @@ Edit `~/.claude/lifecycle-guard/config.json`:
 | `review_after_days` | `90` | `/lifecycle-guard:audit` flags rules not learned, reviewed or applied within this many days |
 | `log_retention_days` | `180` | Prune logged prompts/corrections older than this at session end (never ones not yet learned); `0` keeps them forever |
 | `duplicate_threshold` | `0.5` | Word overlap at which `/audit` flags two rules as possible duplicates |
-| `kb_budget_kb` | `12` | `/audit` warns when a knowledge file grows past this size (every file is loaded for every feature) |
+| `kb_budget_kb` | `12` | `/audit` warns when a knowledge file grows past this size (core and style load for every feature) |
+| `learn_from_automated` | `false` | Also learn from prompts in `claude -p` / Agent SDK sessions (normally tools and other plugins, not you) |
+| `rule_max_chars` | `250` | `/learn` keeps new rules this short; `/audit` flags longer ones `too-long` (rules are the largest part of a feature's context) |
 
 ---
 
@@ -162,9 +164,13 @@ Full details, including what's stored, for how long, what leaves your machine an
 
 - **Local only.** Your prompts are logged to `~/.claude/lifecycle-guard/prompts.jsonl` on your machine and never leave it. Only what you typed is kept (pasted text and system-injected messages are stripped), and records older than `log_retention_days` (180) are pruned once they've been learned from. The learn step is instructed to never record secrets, credentials, customer names or personal data into the checklists.
 - **The workflow uses tokens.** A full feature loads the skill plus your checklists (one compact
-  `digest.py --context` call, ~20–25 KB on a large knowledge base), writes a spec, and runs the reviewer
+  `digest.py --context` call: domain rules in full, other rules as a headline index — ~16 KB on a
+  61-rule knowledge base; `/lifecycle-guard:lg-status` shows yours), writes a spec, and runs the reviewer
   subagent once — a second, scoped round only if the first found critical/high issues. Trivial changes
   skip it. Your learned rules are the largest part: keep them lean with `/lifecycle-guard:audit`.
+- **Automated sessions are not learned from.** Prompts in `claude -p` and Agent SDK sessions are written
+  by tools and other plugins, so they're skipped. If you type into an app built on the Agent SDK and
+  learning seems to have stopped, set `learn_from_automated: true` in `config.json`.
 - **Auto-learn uses tokens.** With `auto_learn: true`, a background `claude -p` run fires at session end once the thresholds are met — that's a real (small) model call. Set `"auto_learn": false` to turn it off and run `/lifecycle-guard:learn` by hand instead.
 
 ---

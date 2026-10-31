@@ -12,6 +12,7 @@ Update the lifecycle-guard knowledge base in `~/.claude/lifecycle-guard/` from n
 3. From the **flagged corrections**, extract missed-scope lessons. Ignore false positives (questions, unrelated "missing" wording). For each real lesson:
    - Generalize it into a reusable rule that would have prevented the miss on a *different* project: portable across projects (no project, tenant or host names) but specific about the failure — the situation, the miss, and the check. "Handle payments properly" fails that test; "A payment QR for a partially paid order encodes the balance due, not the order total" passes.
    - Put it in the matching `domains/<domain>.md` under `## Learned` (create the domain file if needed, copying the section structure of `payments.md`), or in `core.md` under `## Learned` if it applies to any feature.
+   - Keep it short: at most `rule_max_chars` (config, default 250) characters, leading with the situation and the check. The builder sees only a rule's first ~100 characters as a headline until it fetches the rule, so the headline must say when the rule applies.
    - Format: `- [ ] <rule> _(learned YYYY-MM-DD @ <project>: <cause in under 10 words>)_`. `<project>` is the `[project]` prefix of the correction in the digest; it records where the rule was born so it can be questioned later.
    - If the rule only makes sense in that project (it names its tenants, hosts, paths, entities or data), prefix it: `- [ ] [scope: <project>] <rule> …`. Prefer generalizing the wording so it holds anywhere; scope only what can't be generalized.
 
@@ -25,8 +26,10 @@ Update the lifecycle-guard knowledge base in `~/.claude/lifecycle-guard/` from n
 
 6. Before editing any file, copy it to `backups/<filename>.<YYYYMMDD-HHMM>.bak`.
 
-7. Append to `changelog.md`: date, mode, and one line per rule added, changed or removed, with the file it went into.
+7. **Budget check (write-time):** run `python3 ~/.claude/lifecycle-guard/bin/digest.py --lint-rules`. Shorten any rule you added or changed in this run that is `too-long`. If a file is `over-budget`: interactively, propose merges of overlapping rules in it and apply the ones the user accepts; in `auto` mode, never merge or drop existing rules unattended — list the file in your summary and suggest `/lifecycle-guard:audit`.
 
-8. Run `python3 ~/.claude/lifecycle-guard/bin/digest.py --mark`.
+8. Append to `changelog.md`: date, mode, and one line per rule added, changed or removed (after any shortening in step 7), with the file it went into.
 
-9. Reply with a compact summary: N rules added (by file), N style entries, anything skipped as ambiguous. Add one line from `digest.py --audit` (rules needing review) and suggest `/lifecycle-guard:audit` if any are flagged.
+9. Run `python3 ~/.claude/lifecycle-guard/bin/digest.py --mark`.
+
+10. Reply with a compact summary: N rules added (by file), N style entries, anything skipped as ambiguous. Add one line from `digest.py --audit` (rules needing review) and suggest `/lifecycle-guard:audit` if any are flagged.
