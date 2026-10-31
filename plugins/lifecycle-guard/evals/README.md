@@ -116,3 +116,16 @@ claude plugin eval plugins/lifecycle-guard --scaffold --trust-plugin --judge-mod
     splitting the rubric into five `plan-*` graders (partial credit) and raising the timeout to 1500 s.
   - Cost/time: the plugin arm ran ~2.5× the cost (about $1.20 vs $0.40 per run) and much longer, because
     it writes a spec and runs two review rounds.
+- 2026-11-01: v1.12.0 full with/without run (54 sessions, sonnet judge, $21.78, 24 min, 0 errors), vs the
+  v1.10 baseline:
+  - **The context diet cost no review quality.** All seven planted-gap reviews: 1.00 with and without the
+    plugin (unchanged). The control is now 1.00 in both arms (v1.10: 0.67, a fixture gap since fixed).
+  - **spec-first: 0.80 with vs 0.93 without.** Every plugin run failed only `plan-refund-stock`: its
+    `spec.md` addressed reserved stock (the with-only `spec-complete` grader passed 3/3), but its final
+    message never mentioned that stock was deferred (the repo has no inventory code). The plan graders
+    judge only that message. A communication gap — a decision left in the spec — not a planning miss.
+  - **Cost ratio unchanged at ~2.0×** (plugin $14.50 vs $7.28 across all cases). Eval sessions start from
+    the seed KB with no learned rules, so v1.12's main saving (loading learned rules: 42 → 16 KB on a
+    61-rule KB) doesn't show here; the evals confirm quality, not the token saving. spec-first rose
+    slightly ($6.13 vs $5.63 for 3 runs): round 2 now runs after any FAIL — 2 of 3 runs still FAILed after
+    it and were honestly recorded as deferred, not done.
