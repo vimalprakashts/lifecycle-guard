@@ -2,7 +2,7 @@
 name: lifecycle-reviewer
 description: Fresh-context critic that reviews a just-built feature against its lifecycle spec and checklists — every actor, state, failure path, CTA/deep-link coverage, interactivity, security and tenant isolation. Returns ranked, actionable findings. Read-only (it reviews; the main agent fixes). Use in the lifecycle-guard Verify phase and whenever a feature needs an independent definition-of-done check.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: inherit
 ---
 
 # Lifecycle reviewer (critic)

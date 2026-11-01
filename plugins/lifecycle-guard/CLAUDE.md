@@ -30,15 +30,17 @@ corrections over time.
    until a `review.md` with `VERDICT: PASS` (or `review: deferred`) exists. This is plain
    Python/regex: it shares zero blind spots with any model and can't be rationalized past.
 
-3. **Independent critic (fresh context, different model).** `agents/lifecycle-reviewer.md`
-   is a read-only skeptic (`model: sonnet`, tools `Read/Grep/Glob/Bash`) that reviews a
+3. **Independent critic (fresh context, same best model).** `agents/lifecycle-reviewer.md`
+   is a read-only skeptic (`model: inherit`, tools `Read/Grep/Glob/Bash`) that reviews a
    just-built feature against its spec + checklists and returns ranked findings. It runs
-   on a **different model** than the builder (builder is whatever the main session uses,
-   typically Opus) and never sees the build's own reasoning. The main agent fixes; the
-   critic never edits.
+   on the **main session's model** — review is held to the same bar as the build — and
+   never sees the build's own reasoning. The main agent fixes; the critic never edits.
 
-The role/model pairing is a dial: bigger-builder→smaller-critic (current) or
-smaller-builder→bigger-critic both decouple blind spots. The deterministic layer is the
+Independence comes from the FRESH context (it starts with only the spec, the checklists
+and the changed files) and from the checklists themselves, not from a different model.
+Until 1.12.1 the critic was pinned to `model: sonnet` (bigger-builder→smaller-critic, to
+decouple blind spots); it now inherits so a review is never weaker than the build — tune
+its cost with `effort:` (low…max), not with a smaller model. The deterministic layer is the
 true-independence floor; the critic is the last mile for what tests can't encode.
 
 ---
@@ -47,7 +49,7 @@ true-independence floor; the critic is the last mile for what tests can't encode
 
 ```
 .claude-plugin/plugin.json        name/version/description/author (version lives here)
-agents/lifecycle-reviewer.md      the critic subagent (model: sonnet, read-only)
+agents/lifecycle-reviewer.md      the critic subagent (model: inherit, read-only)
 commands/
   audit.md                        /lifecycle-guard:audit [all] — review rules: keep/scope/reword/drop
   bootstrap.md                    /lifecycle-guard:bootstrap — seed KB from ALL past sessions

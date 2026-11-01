@@ -2,6 +2,11 @@
 
 All notable changes to lifecycle-guard. Releases: https://github.com/vimalprakashts/lifecycle-guard/releases
 
+## 1.12.1 — 2026-11-01
+- `lifecycle-reviewer` now runs on the main session's model (`model: inherit`, was `model: sonnet`). Review is held to
+  the same bar as the build; independence comes from its fresh context and the checklists. Tune its cost with the
+  agent's `effort:` level, not a smaller model.
+
 ## 1.12.0 — 2026-10-31
 **Context diet** ([#1](https://github.com/vimalprakashts/lifecycle-guard/issues/1): the plugin was ~26%
 of a heavy user's usage). Applies the context techniques from Anthropic's "code execution with MCP" /
